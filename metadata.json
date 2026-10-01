@@ -1,0 +1,6 @@
+{
+  "name": "Wings HRMS",
+  "description": "Comprehensive enterprise human resource management system for Wings Corporation managing workforce, attendance, leave, tasks, payroll, performance, and reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -7,6 +7,14 @@ export default defineConfig(() => {
   return {
     base: '/Hrms/',
     plugins: [react(), tailwindcss()],
+    build: {
+      rolldownOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          recovery: path.resolve(__dirname, 'reset-password.html'),
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

@@ -20,6 +20,7 @@ import {
 import { useHRMS } from '../context/HRMSContext';
 import { AttendanceStatus } from '../types';
 import { Avatar } from '../components/common/Avatar';
+import { MonthlyLeaveDeductionSummary } from '../components/common/MonthlyLeaveDeductionSummary';
 
 export const AdminDashboard: React.FC = () => {
   const { 
@@ -30,18 +31,24 @@ export const AdminDashboard: React.FC = () => {
     payrollRecords, 
     holidays, 
     announcements,
+    companySettings,
+    todayDate,
     setActiveNav,
     reviewLeave
   } = useHRMS();
 
   const [attendanceFilter, setAttendanceFilter] = useState<string>('all');
+  const [shiftStartHour, shiftStartMinute] = companySettings.officeStartTime.split(':').map(Number);
+  const lateCutoffMinutes = shiftStartHour * 60 + shiftStartMinute + companySettings.gracePeriodMinutes;
+  const lateCutoffClock = new Date();
+  lateCutoffClock.setHours(Math.floor(lateCutoffMinutes / 60), lateCutoffMinutes % 60, 0, 0);
+  const lateCutoffLabel = lateCutoffClock.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-  // Metrics calculations for Today (2026-09-28)
-  const todayStr = '2026-09-28';
+  // Metrics calculations for today
   const totalEmployees = employees.length;
   
   // Today's attendance records
-  const todayRecords = attendance.filter(a => a.date === todayStr);
+  const todayRecords = attendance.filter(a => a.date === todayDate);
   const presentToday = todayRecords.filter(a => a.status === 'Present' || a.status === 'Work From Home').length;
   const absentToday = todayRecords.filter(a => a.status === 'Absent').length;
   const onLeaveToday = todayRecords.filter(a => a.status === 'Leave' || a.status === 'Half Day').length;
@@ -84,13 +91,18 @@ export const AdminDashboard: React.FC = () => {
   };
 
   // Monthly attendance trend simulation (last 5 business days)
+  const trendDayLabels = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(`${todayDate}T00:00:00`);
+    date.setDate(date.getDate() + index - 5);
+    return date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+  });
   const attendanceTrend = [
-    { day: 'Mon 21', rate: 95, present: 21, late: 1, absent: 0 },
-    { day: 'Tue 22', rate: 91, present: 20, late: 2, absent: 0 },
-    { day: 'Wed 23', rate: 95, present: 21, late: 0, absent: 1 },
-    { day: 'Thu 24', rate: 86, present: 19, late: 2, absent: 1 },
-    { day: 'Fri 25', rate: 91, present: 20, late: 1, absent: 1 },
-    { day: 'Mon 28', rate: attendanceRate, present: presentToday, late: lateToday, absent: absentToday },
+    { day: trendDayLabels[0], rate: 95, present: 21, late: 1, absent: 0 },
+    { day: trendDayLabels[1], rate: 91, present: 20, late: 2, absent: 0 },
+    { day: trendDayLabels[2], rate: 95, present: 21, late: 0, absent: 1 },
+    { day: trendDayLabels[3], rate: 86, present: 19, late: 2, absent: 1 },
+    { day: trendDayLabels[4], rate: 91, present: 20, late: 1, absent: 1 },
+    { day: trendDayLabels[5], rate: attendanceRate, present: presentToday, late: lateToday, absent: absentToday },
   ];
 
   return (
@@ -186,7 +198,7 @@ export const AdminDashboard: React.FC = () => {
             {lateToday}
           </div>
           <div className="text-[11px] text-amber-600 mt-1 font-medium">
-            After 09:45 AM
+            After {lateCutoffLabel}
           </div>
         </div>
 
@@ -203,6 +215,8 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <MonthlyLeaveDeductionSummary />
 
       {/* Two Column Section: Attendance Trend Chart & Department Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -328,8 +342,8 @@ export const AdminDashboard: React.FC = () => {
                 <tr>
                   <th className="py-2.5 px-4 font-semibold">Employee</th>
                   <th className="py-2.5 px-3 font-semibold">Department</th>
-                  <th className="py-2.5 px-3 font-semibold font-mono">Check In</th>
-                  <th className="py-2.5 px-3 font-semibold font-mono">Check Out</th>
+                  <th className="py-2.5 px-3 font-semibold font-mono">Punch In</th>
+                  <th className="py-2.5 px-3 font-semibold font-mono">Punch Out</th>
                   <th className="py-2.5 px-3 font-semibold font-mono">Hours</th>
                   <th className="py-2.5 px-4 font-semibold text-right">Status</th>
                 </tr>

@@ -33,14 +33,15 @@ export const ReportsPage: React.FC = () => {
     leaveRequests, 
     payrollRecords, 
     tasks, 
-    performanceReviews 
+    performanceReviews,
+    todayDate
   } = useHRMS();
 
   const [activeReport, setActiveReport] = useState<ReportType>('attendance');
   const [selectedDept, setSelectedDept] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
-  const [startDate, setStartDate] = useState('2026-09-01');
-  const [endDate, setEndDate] = useState('2026-09-28');
+  const [startDate, setStartDate] = useState(`${todayDate.slice(0, 7)}-01`);
+  const [endDate, setEndDate] = useState(todayDate);
 
   const reportTabs: { id: ReportType; label: string; icon: React.ReactNode }[] = [
     { id: 'attendance', label: 'Attendance Report', icon: <Clock className="w-3.5 h-3.5" /> },
@@ -59,7 +60,7 @@ export const ReportsPage: React.FC = () => {
     let rows: string[][] = [];
 
     if (activeReport === 'attendance' || activeReport === 'late_arrival') {
-      headers = ['Date,Employee ID,Employee Name,Check In,Check Out,Working Hours,Status'];
+      headers = ['Date,Employee ID,Employee Name,Punch In,Punch Out,Working Hours,Status'];
       const data = activeReport === 'late_arrival' 
         ? attendance.filter(a => a.status === 'Late')
         : attendance;
@@ -194,8 +195,8 @@ export const ReportsPage: React.FC = () => {
                 <tr>
                   <th className="py-3 px-4 font-semibold">Date</th>
                   <th className="py-3 px-3 font-semibold">Employee</th>
-                  <th className="py-3 px-3 font-semibold font-mono">Check In</th>
-                  <th className="py-3 px-3 font-semibold font-mono">Check Out</th>
+                  <th className="py-3 px-3 font-semibold font-mono">Punch In</th>
+                  <th className="py-3 px-3 font-semibold font-mono">Punch Out</th>
                   <th className="py-3 px-3 font-semibold font-mono">Hours</th>
                   <th className="py-3 px-3 font-semibold font-mono">Overtime</th>
                   <th className="py-3 px-4 font-semibold text-right">Status</th>

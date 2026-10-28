@@ -2,7 +2,7 @@ export type UserRole = 'super_admin' | 'hr' | 'manager' | 'employee';
 
 export type EmploymentType = 'Full Time' | 'Part Time' | 'Intern' | 'Contract' | 'Freelancer';
 
-export type EmployeeStatus = 'Active' | 'Probation' | 'Notice Period' | 'Resigned' | 'Terminated' | 'Inactive';
+export type EmployeeStatus = 'Active' | 'Probation' | 'Notice Period' | 'Resigned' | 'Terminated' | 'Inactive' | 'Deactivated';
 
 export type AttendanceStatus = 'Present' | 'Late' | 'Absent' | 'Half Day' | 'Leave' | 'Work From Home';
 
@@ -116,12 +116,19 @@ export interface AttendanceRecord {
   checkOut?: string; // HH:mm
   workingHours: number; // e.g. 8.5
   breakMinutes: number;
+  breakSessions?: AttendanceBreakSession[];
   overtimeHours: number;
   status: AttendanceStatus;
   notes?: string;
   isManualCorrection?: boolean;
   correctedBy?: string;
   correctionReason?: string;
+}
+
+export interface AttendanceBreakSession {
+  windowId: string;
+  startedAt: string;
+  endedAt?: string;
 }
 
 export interface LeaveBalance {

@@ -51,6 +51,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     navItems.push({ id: 'audit-log', label: 'Audit Logs', icon: <ShieldCheck className="w-4 h-4 text-amber-400" /> });
   }
 
+  const employeeNavItems = ['dashboard', 'attendance', 'leave', 'tasks', 'documents', 'payroll', 'holidays', 'announcements'];
+  const visibleNavItems = role === 'employee'
+    ? navItems.filter(item => employeeNavItems.includes(item.id))
+    : navItems;
+
   const handleNavClick = (id: string) => {
     setActiveNav(id);
     setIsMobileOpen(false);
@@ -101,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
               Workspace Menu
             </div>
 
-            {navItems.map(item => {
+            {visibleNavItems.map(item => {
               const isActive = activeNav === item.id;
               return (
                 <button
@@ -125,19 +130,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
 
         {/* Bottom Profile & Settings Section */}
         <div className="p-3 border-t border-slate-700/60 bg-[#162136]">
-          <div className="space-y-0.5 text-xs font-medium mb-2">
-            <button
-              onClick={() => handleNavClick('settings')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-left cursor-pointer ${
-                activeNav === 'settings' 
-                  ? 'bg-[#365CF5] text-white font-semibold' 
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Settings className="w-4 h-4 text-slate-400" />
-              <span>Company Settings</span>
-            </button>
-          </div>
+          {role !== 'employee' && (
+            <div className="space-y-0.5 text-xs font-medium mb-2">
+              <button
+                onClick={() => handleNavClick('settings')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-left cursor-pointer ${
+                  activeNav === 'settings' 
+                    ? 'bg-[#365CF5] text-white font-semibold' 
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Settings className="w-4 h-4 text-slate-400" />
+                <span>Company Settings</span>
+              </button>
+            </div>
+          )}
 
           {/* Current User Card */}
           <div className="p-2.5 rounded-lg bg-slate-800/50 border border-slate-700/50 flex items-center justify-between">

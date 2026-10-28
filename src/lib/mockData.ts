@@ -21,7 +21,7 @@ export const initialDepartments: Department[] = [
     id: 'dept-1', 
     name: 'HR', 
     code: 'HR', 
-    managerId: 'emp-1', 
+    managerId: 'emp-16', 
     description: 'Human Resources, employee lifecycle, biometric attendance, talent acquisition, payroll, and staff welfare', 
     isActive: true, 
     createdAt: '2024-01-01' 
@@ -30,7 +30,7 @@ export const initialDepartments: Department[] = [
     id: 'dept-2', 
     name: 'Sales', 
     code: 'SALES', 
-    managerId: 'emp-11', 
+    managerId: 'emp-32', 
     description: 'Corporate B2B enterprise sales, retail merchant onboarding, client acquisitions, and business development', 
     isActive: true, 
     createdAt: '2024-01-01' 
@@ -1535,8 +1535,8 @@ export const initialEmployees: Employee[] = [
     id: 'emp-32',
     employeeCode: 'WC-032',
     firstName: 'Ardhendu',
-    lastName: '',
-    fullName: 'Ardhendu',
+    lastName: 'Paul',
+    fullName: 'Ardhendu Paul',
     avatarUrl: '',
     dateOfBirth: '1990-12-05',
     gender: 'Male',

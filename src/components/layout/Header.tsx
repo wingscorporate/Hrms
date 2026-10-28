@@ -22,6 +22,9 @@ export const Header: React.FC = () => {
     currentUser, 
     switchRole, 
     logout, 
+    currentBreakWindow,
+    startBreak,
+    endBreak,
     notifications, 
     markNotificationRead, 
     markAllNotificationsRead,
@@ -34,8 +37,14 @@ export const Header: React.FC = () => {
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
+  const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
   const notifRef = useRef<HTMLDivElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentDateTime(new Date()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   // Close menus on click outside
   useEffect(() => {
@@ -52,6 +61,10 @@ export const Header: React.FC = () => {
   }, []);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
+  const activeBreak = todayAttendance?.breakSessions?.find(session => !session.endedAt);
+  const breakAlreadyTaken = currentBreakWindow && todayAttendance?.breakSessions?.some(
+    session => session.windowId === currentBreakWindow.id
+  );
 
   const roles: { role: UserRole; label: string; desc: string; icon: React.ReactNode }[] = [
     { role: 'super_admin', label: 'Super Admin', desc: 'Full corporate authority & audit logs', icon: <Shield className="w-4 h-4 text-purple-600" /> },
@@ -60,11 +73,15 @@ export const Header: React.FC = () => {
     { role: 'employee', label: 'Staff Employee', desc: 'Self-service attendance, leave & tasks', icon: <User className="w-4 h-4 text-amber-600" /> },
   ];
 
-  const currentDateFormatted = new Date('2026-09-28T09:30:00').toLocaleDateString('en-US', {
+  const currentDateFormatted = currentDateTime.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric'
+  });
+  const currentTimeFormatted = currentDateTime.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit'
   });
 
   return (
@@ -91,16 +108,18 @@ export const Header: React.FC = () => {
         <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-500 font-medium px-2 py-1 bg-slate-50 rounded-md border border-slate-100">
           <Calendar className="w-3.5 h-3.5 text-slate-400" />
           <span>{currentDateFormatted}</span>
+          <span aria-hidden="true">|</span>
+          <span>{currentTimeFormatted}</span>
         </div>
 
-        {/* Quick Punch Status (if checked in / checked out) */}
+        {/* Quick Punch Status */}
         {currentUser && (
           <div className="hidden md:flex items-center gap-2">
             {todayAttendance?.checkIn && !todayAttendance.checkOut ? (
               <button
                 onClick={checkOut}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors cursor-pointer shadow-2xs"
-                title="Click to Check Out"
+                title="Click to Punch Out"
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>Punch Out ({todayAttendance.checkIn})</span>
@@ -109,16 +128,32 @@ export const Header: React.FC = () => {
               <button
                 onClick={checkIn}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#16A34A] hover:bg-emerald-700 rounded-lg transition-colors cursor-pointer shadow-2xs"
-                title="Click to Check In"
+                title="Click to Punch In"
               >
                 <Clock className="w-3.5 h-3.5" />
-                <span>Check In</span>
+                <span>Punch In</span>
               </button>
             ) : (
               <span className="text-xs text-slate-500 px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md font-medium">
                 Punched: {todayAttendance.checkIn} - {todayAttendance.checkOut}
               </span>
             )}
+            {activeBreak ? (
+              <button
+                onClick={endBreak}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-cyan-700 hover:bg-cyan-800 rounded-lg transition-colors cursor-pointer"
+              >
+                End Break
+              </button>
+            ) : currentBreakWindow && todayAttendance?.checkIn && !todayAttendance.checkOut && !breakAlreadyTaken ? (
+              <button
+                onClick={startBreak}
+                title={`Break available: ${currentBreakWindow.label}`}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-cyan-700 hover:bg-cyan-800 rounded-lg transition-colors cursor-pointer"
+              >
+                Start Break
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -219,39 +254,40 @@ export const Header: React.FC = () => {
                 <div className="text-[11px] text-slate-400 mt-0.5">{currentUser?.designation}</div>
               </div>
 
-              {/* Quick Role Switcher section */}
-              <div className="p-2 border-b border-slate-100">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
-                  Switch Active Role (Demo)
-                </div>
-                <div className="space-y-0.5">
-                  {roles.map(r => (
-                    <button
-                      key={r.role}
-                      onClick={() => {
-                        switchRole(r.role);
-                        setIsRoleMenuOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors ${
-                        currentUser?.role === r.role 
-                          ? 'bg-blue-50 text-[#365CF5] font-semibold' 
-                          : 'text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        {r.icon}
-                        <div>
-                          <div>{r.label}</div>
-                          <div className="text-[10px] text-slate-400 font-normal">{r.desc}</div>
+              {currentUser?.role !== 'employee' && (
+                <div className="p-2 border-b border-slate-100">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                    Switch Active Role (Demo)
+                  </div>
+                  <div className="space-y-0.5">
+                    {roles.filter(role => role.role !== 'employee').map(role => (
+                      <button
+                        key={role.role}
+                        onClick={() => {
+                          switchRole(role.role);
+                          setIsRoleMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors ${
+                          currentUser?.role === role.role 
+                            ? 'bg-blue-50 text-[#365CF5] font-semibold' 
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {role.icon}
+                          <div>
+                            <div>{role.label}</div>
+                            <div className="text-[10px] text-slate-400 font-normal">{role.desc}</div>
+                          </div>
                         </div>
-                      </div>
-                      {currentUser?.role === r.role && (
-                        <Check className="w-3.5 h-3.5 text-[#365CF5]" />
-                      )}
-                    </button>
-                  ))}
+                        {currentUser?.role === role.role && (
+                          <Check className="w-3.5 h-3.5 text-[#365CF5]" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Log out option */}
               <div className="p-1">

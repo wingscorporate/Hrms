@@ -22,7 +22,7 @@ import { EmployeeProfileModal } from './EmployeeProfileModal';
 import { Avatar } from '../components/common/Avatar';
 
 export const EmployeesPage: React.FC = () => {
-  const { employees, departments, addEmployee, currentUser } = useHRMS();
+  const { employees, departments, addEmployee, deactivateEmployee, reactivateEmployee, deleteEmployee, currentUser } = useHRMS();
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [search, setSearch] = useState('');
@@ -32,6 +32,7 @@ export const EmployeesPage: React.FC = () => {
 
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const canManageProfiles = currentUser?.role === 'super_admin' || currentUser?.role === 'hr' || currentUser?.role === 'manager';
 
   // Multi-step Add Employee State
   const [step, setStep] = useState(1);
@@ -176,6 +177,24 @@ export const EmployeesPage: React.FC = () => {
     setStep(1);
   };
 
+  const handleDeactivate = () => {
+    if (!selectedEmployee || !window.confirm(`Deactivate ${selectedEmployee.fullName}'s profile? Their records will be retained.`)) return;
+    deactivateEmployee(selectedEmployee.id);
+    setSelectedEmployee(null);
+  };
+
+  const handleReactivate = () => {
+    if (!selectedEmployee || !window.confirm(`Reactivate ${selectedEmployee.fullName}'s profile?`)) return;
+    reactivateEmployee(selectedEmployee.id);
+    setSelectedEmployee(null);
+  };
+
+  const handleDelete = () => {
+    if (!selectedEmployee || !window.confirm(`Permanently delete ${selectedEmployee.fullName} and their related attendance, leave, task, payroll, review, and personal document data? This cannot be undone.`)) return;
+    deleteEmployee(selectedEmployee.id);
+    setSelectedEmployee(null);
+  };
+
   const getStatusBadge = (status: EmployeeStatus) => {
     switch (status) {
       case 'Active':
@@ -188,6 +207,8 @@ export const EmployeesPage: React.FC = () => {
       case 'Terminated':
       case 'Inactive':
         return 'bg-red-50 text-red-700 border-red-200';
+      case 'Deactivated':
+        return 'bg-slate-100 text-slate-600 border-slate-300';
       default:
         return 'bg-slate-50 text-slate-700 border-slate-200';
     }
@@ -268,6 +289,8 @@ export const EmployeesPage: React.FC = () => {
             <option value="Notice Period">Notice Period</option>
             <option value="Resigned">Resigned</option>
             <option value="Terminated">Terminated</option>
+            <option value="Inactive">Inactive</option>
+            <option value="Deactivated">Deactivated</option>
           </select>
 
           {/* Employment Type Filter */}
@@ -875,6 +898,10 @@ export const EmployeesPage: React.FC = () => {
         <EmployeeProfileModal
           employee={selectedEmployee}
           onClose={() => setSelectedEmployee(null)}
+          canManageProfiles={canManageProfiles}
+          onDeactivate={handleDeactivate}
+          onReactivate={handleReactivate}
+          onDelete={handleDelete}
         />
       )}
     </div>

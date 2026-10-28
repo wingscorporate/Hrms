@@ -14,7 +14,7 @@ import { useHRMS } from '../context/HRMSContext';
 import { Announcement, AnnouncementAudience } from '../types';
 
 export const AnnouncementsPage: React.FC = () => {
-  const { announcements, departments, employees, createAnnouncement, deleteAnnouncement, currentUser } = useHRMS();
+  const { announcements, departments, employees, createAnnouncement, deleteAnnouncement, currentUser, todayDate } = useHRMS();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -23,7 +23,7 @@ export const AnnouncementsPage: React.FC = () => {
   const [description, setDescription] = useState('');
   const [audience, setAudience] = useState<AnnouncementAudience>('Everyone');
   const [targetDepartmentId, setTargetDepartmentId] = useState('');
-  const [publishDate, setPublishDate] = useState('2026-09-28');
+  const [publishDate, setPublishDate] = useState(todayDate);
   const [expiryDate, setExpiryDate] = useState('2026-10-15');
   const [priority, setPriority] = useState<'normal' | 'important' | 'urgent'>('important');
 

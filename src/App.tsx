@@ -35,6 +35,11 @@ const AppContent: React.FC = () => {
 
   // Render active module
   const renderContent = () => {
+    const employeePages = ['dashboard', 'attendance', 'leave', 'tasks', 'documents', 'payroll', 'holidays', 'announcements'];
+    if (currentUser.role === 'employee' && !employeePages.includes(activeNav)) {
+      return <EmployeeDashboard />;
+    }
+
     switch (activeNav) {
       case 'dashboard':
         return currentUser.role === 'employee' ? <EmployeeDashboard /> : <AdminDashboard />;

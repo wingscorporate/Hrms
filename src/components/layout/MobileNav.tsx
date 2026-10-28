@@ -50,7 +50,7 @@ export const MobileNav: React.FC = () => {
           className={`w-12 h-12 rounded-full flex flex-col items-center justify-center text-white shadow-lg border-2 border-white transition-transform active:scale-95 ${
             isCheckedIn ? 'bg-amber-600' : 'bg-[#16A34A]'
           }`}
-          title={isCheckedIn ? 'Check Out' : 'Check In'}
+          title={isCheckedIn ? 'Punch Out' : 'Punch In'}
         >
           <Clock className="w-5 h-5" />
           <span className="text-[9px] font-bold uppercase tracking-tight">

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useHRMS } from '../context/HRMSContext';
 import { generatePayslipPDF } from '../lib/pdfGenerator';
+import { MonthlyLeaveDeductionSummary } from '../components/common/MonthlyLeaveDeductionSummary';
 
 export const EmployeeDashboard: React.FC = () => {
   const { 
@@ -24,8 +25,12 @@ export const EmployeeDashboard: React.FC = () => {
     holidays, 
     announcements, 
     todayAttendance, 
+    todayDate,
+    currentBreakWindow,
     checkIn, 
     checkOut,
+    startBreak,
+    endBreak,
     companySettings,
     setActiveNav
   } = useHRMS();
@@ -83,8 +88,12 @@ export const EmployeeDashboard: React.FC = () => {
     .sort((a, b) => b.monthYear.localeCompare(a.monthYear));
 
   const isCheckedIn = !!todayAttendance?.checkIn && !todayAttendance?.checkOut;
+  const activeBreak = todayAttendance?.breakSessions?.find(session => !session.endedAt);
+  const breakAlreadyTaken = currentBreakWindow && todayAttendance?.breakSessions?.some(
+    session => session.windowId === currentBreakWindow.id
+  );
 
-  const currentDateLong = new Date('2026-09-28T09:30:00').toLocaleDateString('en-US', {
+  const currentDateLong = new Date(`${todayDate}T00:00:00`).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -129,7 +138,7 @@ export const EmployeeDashboard: React.FC = () => {
 
       {/* Main Grid: Attendance Punch Widget & Quick Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Large Check In / Check Out Card */}
+        {/* Large Punch In / Punch Out Card */}
         <div className="md:col-span-2 bg-gradient-to-br from-[#1D2B45] to-[#253759] text-white p-6 rounded-xl shadow-xs border border-slate-800 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
@@ -145,7 +154,7 @@ export const EmployeeDashboard: React.FC = () => {
             <div className="mt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
               <div>
                 <div className="text-xs text-slate-400">
-                  {isCheckedIn ? 'Checked In Since' : todayAttendance?.checkIn ? 'Shift Finished' : 'Not Punched In Yet'}
+                  {isCheckedIn ? 'Punched In Since' : todayAttendance?.checkIn ? 'Shift Finished' : 'Not Punched In Yet'}
                 </div>
                 <div className="text-3xl font-extrabold font-mono tracking-tight text-white mt-1">
                   {todayAttendance?.checkIn || '09:00 AM'}
@@ -161,14 +170,14 @@ export const EmployeeDashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-3">
+          <div className="mt-6 pt-4 border-t border-white/10 space-y-2">
             {isCheckedIn ? (
               <button
                 onClick={checkOut}
                 className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
               >
                 <Clock className="w-4 h-4" />
-                <span>CHECK OUT NOW</span>
+                <span>PUNCH OUT NOW</span>
               </button>
             ) : !todayAttendance?.checkIn ? (
               <button
@@ -176,13 +185,31 @@ export const EmployeeDashboard: React.FC = () => {
                 className="w-full py-3 px-4 bg-[#16A34A] hover:bg-emerald-600 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
               >
                 <Clock className="w-4 h-4" />
-                <span>CHECK IN NOW</span>
+                <span>PUNCH IN NOW</span>
               </button>
             ) : (
               <div className="w-full py-2.5 px-4 bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 font-semibold rounded-lg text-xs text-center">
                 Punched Out at {todayAttendance.checkOut} · Total: {todayAttendance.workingHours} hrs
               </div>
             )}
+            {activeBreak ? (
+              <button
+                onClick={endBreak}
+                className="w-full py-2.5 px-4 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                END BREAK
+              </button>
+            ) : currentBreakWindow && isCheckedIn && !breakAlreadyTaken ? (
+              <button
+                onClick={startBreak}
+                className="w-full py-2.5 px-4 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                START BREAK ({currentBreakWindow.label})
+              </button>
+            ) : null}
+            <p className="text-[10px] text-slate-300 text-center">
+              Break windows: 1:30 PM - 2:00 PM, 4:30 PM - 4:45 PM, 6:30 PM - 6:45 PM
+            </p>
           </div>
         </div>
 
@@ -278,6 +305,8 @@ export const EmployeeDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <MonthlyLeaveDeductionSummary />
 
       {/* Two Column: Assigned Tasks & Recent Payslips */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

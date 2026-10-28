@@ -23,15 +23,25 @@ export const AttendancePage: React.FC = () => {
     employees, 
     currentUser, 
     todayAttendance, 
+    todayDate,
+    currentBreakWindow,
     checkIn, 
     checkOut, 
+    startBreak,
+    endBreak,
     correctAttendance,
     companySettings,
     holidays
   } = useHRMS();
 
+  const [shiftStartHour, shiftStartMinute] = companySettings.officeStartTime.split(':').map(Number);
+  const lateCutoffMinutes = shiftStartHour * 60 + shiftStartMinute + companySettings.gracePeriodMinutes;
+  const lateCutoffClock = new Date();
+  lateCutoffClock.setHours(Math.floor(lateCutoffMinutes / 60), lateCutoffMinutes % 60, 0, 0);
+  const lateCutoffLabel = lateCutoffClock.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
   const [viewTab, setViewTab] = useState<'roster' | 'calendar'>('roster');
-  const [selectedDate, setSelectedDate] = useState('2026-09-28');
+  const [selectedDate, setSelectedDate] = useState(todayDate);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchEmployee, setSearchEmployee] = useState('');
 
@@ -72,8 +82,16 @@ export const AttendancePage: React.FC = () => {
     return () => clearInterval(interval);
   }, [todayAttendance]);
 
+  useEffect(() => {
+    setSelectedDate(todayDate);
+  }, [todayDate]);
+
   const isCheckedIn = !!todayAttendance?.checkIn && !todayAttendance.checkOut;
-  const canCorrect = currentUser?.role === 'super_admin' || currentUser?.role === 'hr';
+  const activeBreak = todayAttendance?.breakSessions?.find(session => !session.endedAt);
+  const breakAlreadyTaken = currentBreakWindow && todayAttendance?.breakSessions?.some(
+    session => session.windowId === currentBreakWindow.id
+  );
+  const canCorrect = currentUser?.role === 'super_admin' || currentUser?.role === 'hr' || currentUser?.role === 'manager';
 
   // Filtered roster for chosen date
   const rosterForDate = attendance.filter(rec => rec.date === selectedDate);
@@ -157,7 +175,7 @@ export const AttendancePage: React.FC = () => {
               <div>
                 <div className="text-xs text-slate-400">Punch Status</div>
                 <div className="text-lg font-bold text-slate-900 mt-0.5">
-                  {isCheckedIn ? 'Checked In' : todayAttendance?.checkIn ? 'Shift Ended' : 'Not Clocked In'}
+                  {isCheckedIn ? 'Punched In' : todayAttendance?.checkIn ? 'Shift Ended' : 'Not Punched In'}
                 </div>
                 <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                   Punch Time: {todayAttendance?.checkIn || '—'}
@@ -173,7 +191,7 @@ export const AttendancePage: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-5 pt-3 border-t border-slate-100">
+          <div className="mt-5 pt-3 border-t border-slate-100 space-y-2">
             {isCheckedIn ? (
               <button
                 onClick={checkOut}
@@ -195,6 +213,24 @@ export const AttendancePage: React.FC = () => {
                 Shift Logged: {todayAttendance.checkIn} to {todayAttendance.checkOut} ({todayAttendance.workingHours}h)
               </div>
             )}
+            {activeBreak ? (
+              <button
+                onClick={endBreak}
+                className="w-full py-2 px-4 bg-cyan-700 hover:bg-cyan-800 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                END BREAK
+              </button>
+            ) : currentBreakWindow && isCheckedIn && !breakAlreadyTaken ? (
+              <button
+                onClick={startBreak}
+                className="w-full py-2 px-4 bg-cyan-700 hover:bg-cyan-800 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                START BREAK ({currentBreakWindow.label})
+              </button>
+            ) : null}
+            <p className="text-[10px] text-slate-400 text-center">
+              Break windows: 1:30 PM - 2:00 PM, 4:30 PM - 4:45 PM, 6:30 PM - 6:45 PM
+            </p>
           </div>
         </div>
 
@@ -231,7 +267,7 @@ export const AttendancePage: React.FC = () => {
             <div className="mt-4 text-xs text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1">
               <span>Weekly Off: <strong className="font-semibold text-slate-700">{companySettings.weeklyOffDays.join(', ')}</strong></span>
               <span>·</span>
-              <span>Late Arrival Penalty: <strong className="font-semibold text-slate-700">Flagged after 09:45 AM</strong></span>
+              <span>Late Arrival Penalty: <strong className="font-semibold text-slate-700">Flagged after {lateCutoffLabel}</strong></span>
               <span>·</span>
               <span>Audit Logging: <strong className="font-semibold text-slate-700">Active (Immutable)</strong></span>
             </div>
@@ -315,8 +351,8 @@ export const AttendancePage: React.FC = () => {
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="py-3 px-4 font-semibold">Employee</th>
-                  <th className="py-3 px-3 font-semibold font-mono">Check In</th>
-                  <th className="py-3 px-3 font-semibold font-mono">Check Out</th>
+                  <th className="py-3 px-3 font-semibold font-mono">Punch In</th>
+                  <th className="py-3 px-3 font-semibold font-mono">Punch Out</th>
                   <th className="py-3 px-3 font-semibold font-mono">Working Hours</th>
                   <th className="py-3 px-3 font-semibold font-mono">Overtime</th>
                   <th className="py-3 px-3 font-semibold">Status</th>
@@ -497,7 +533,7 @@ export const AttendancePage: React.FC = () => {
             <form onSubmit={handleSaveCorrection} className="p-5 space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Check In Time</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Punch In Time</label>
                   <input
                     type="time"
                     required
@@ -507,7 +543,7 @@ export const AttendancePage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Check Out Time</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Punch Out Time</label>
                   <input
                     type="time"
                     required

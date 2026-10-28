@@ -37,6 +37,7 @@ export const PayrollPage: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<PayrollRecord | null>(null);
 
   const canManagePayroll = currentUser?.role === 'super_admin' || currentUser?.role === 'hr';
+  const canEditSalary = canManagePayroll || currentUser?.role === 'manager';
 
   // Filter records for selected month
   const monthlyRecords = payrollRecords.filter(p => p.monthYear === selectedMonth);
@@ -48,7 +49,7 @@ export const PayrollPage: React.FC = () => {
     const matchesStatus = statusFilter === 'all' || p.status.toLowerCase() === statusFilter.toLowerCase();
 
     // If regular employee or manager without HR access, only show their own record
-    if (!canManagePayroll) {
+    if (!canEditSalary) {
       return p.employeeId === currentUser?.employeeId;
     }
 
@@ -95,6 +96,9 @@ export const PayrollPage: React.FC = () => {
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Manage salary structures, deductions, TDS compliances, bank transfers, and verified payslip issuance.
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            Arrivals after 11:15 AM are late; each 3 late days deducts one day of gross salary (monthly gross / 30).
           </p>
         </div>
 
@@ -247,7 +251,7 @@ export const PayrollPage: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="inline-flex items-center gap-2">
-                        {canManagePayroll && (
+                        {canEditSalary && (
                           <button
                             onClick={() => setEditingRecord(pay)}
                             className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded"

@@ -24,6 +24,7 @@ export const TasksPage: React.FC = () => {
     employees, 
     departments, 
     currentUser, 
+    todayDate,
     createTask, 
     updateTaskStatus, 
     addTaskComment 
@@ -42,14 +43,14 @@ export const TasksPage: React.FC = () => {
   const [projectName, setProjectName] = useState('Digital Transformation');
   const [departmentId, setDepartmentId] = useState('dept-2');
   const [priority, setPriority] = useState<TaskPriority>('Medium');
-  const [startDate, setStartDate] = useState('2026-09-28');
+  const [startDate, setStartDate] = useState(todayDate);
   const [deadline, setDeadline] = useState('2026-10-10');
 
   // Stats calculation
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter(t => t.status === 'Completed').length;
   const inProgressTasks = tasks.filter(t => t.status === 'In Progress').length;
-  const overdueTasks = tasks.filter(t => t.deadline < '2026-09-28' && t.status !== 'Completed').length;
+  const overdueTasks = tasks.filter(t => t.deadline < todayDate && t.status !== 'Completed').length;
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const kanbanColumns: { status: TaskStatus; label: string; color: string }[] = [

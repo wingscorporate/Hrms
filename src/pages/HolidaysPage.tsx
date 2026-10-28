@@ -11,14 +11,14 @@ import { useHRMS } from '../context/HRMSContext';
 import { Holiday, HolidayType } from '../types';
 
 export const HolidaysPage: React.FC = () => {
-  const { holidays, createHoliday, deleteHoliday, currentUser } = useHRMS();
+  const { holidays, createHoliday, deleteHoliday, currentUser, todayDate } = useHRMS();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterType, setFilterType] = useState<string>('all');
 
   // Form State
   const [name, setName] = useState('');
-  const [date, setDate] = useState('2026-10-02');
+  const [date, setDate] = useState(todayDate);
   const [type, setType] = useState<HolidayType>('National Holiday');
   const [description, setDescription] = useState('');
 

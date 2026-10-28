@@ -13,7 +13,9 @@ import {
   MapPin, 
   ShieldAlert,
   Building,
-  Download
+  Download,
+  Pencil,
+  Save
 } from 'lucide-react';
 import { Employee } from '../types';
 import { useHRMS } from '../context/HRMSContext';
@@ -23,9 +25,13 @@ import { Avatar } from '../components/common/Avatar';
 interface EmployeeProfileModalProps {
   employee: Employee | null;
   onClose: () => void;
+  canManageProfiles: boolean;
+  onDeactivate: () => void;
+  onReactivate: () => void;
+  onDelete: () => void;
 }
 
-export const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ employee, onClose }) => {
+export const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ employee, onClose, canManageProfiles, onDeactivate, onReactivate, onDelete }) => {
   const { 
     currentUser, 
     departments, 
@@ -36,18 +42,20 @@ export const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ empl
     performanceReviews, 
     payrollRecords, 
     documents,
-    companySettings
+    companySettings,
+    updateEmployee
   } = useHRMS();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'attendance' | 'leave' | 'tasks' | 'performance' | 'payroll' | 'documents'>('overview');
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(employee);
 
   if (!employee) return null;
 
   const department = departments.find(d => d.id === employee.departmentId);
   const manager = employees.find(e => e.id === employee.managerId);
 
-  // Role permissions: Managers can NOT see confidential salary unless Super Admin or HR
-  const canViewSalary = currentUser?.role === 'super_admin' || currentUser?.role === 'hr' || currentUser?.employeeId === employee.id;
+  const canViewSalary = currentUser?.role === 'super_admin' || currentUser?.role === 'hr' || currentUser?.role === 'manager' || currentUser?.employeeId === employee.id;
 
   // Specific employee records
   const empAttendance = attendance.filter(a => a.employeeId === employee.id).slice(0, 10);
@@ -58,6 +66,165 @@ export const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ empl
   const empDocs = documents.filter(d => d.employeeId === employee.id);
 
   const formatINR = (val: number) => `₹${val.toLocaleString('en-IN')}`;
+
+  const updateField = <K extends keyof Employee>(field: K, value: Employee[K]) => {
+    setDraft(current => current ? { ...current, [field]: value } : current);
+  };
+
+  const updateSalary = <K extends keyof Employee['salary']>(field: K, value: Employee['salary'][K]) => {
+    setDraft(current => current ? { ...current, salary: { ...current.salary, [field]: value } } : current);
+  };
+
+  const updateBankDetails = <K extends keyof Employee['bankDetails']>(field: K, value: Employee['bankDetails'][K]) => {
+    setDraft(current => current ? { ...current, bankDetails: { ...current.bankDetails, [field]: value } } : current);
+  };
+
+  const updateEmergencyContact = <K extends keyof Employee['emergencyContact']>(field: K, value: Employee['emergencyContact'][K]) => {
+    setDraft(current => current ? { ...current, emergencyContact: { ...current.emergencyContact, [field]: value } } : current);
+  };
+
+  const handleSaveProfile = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!draft) return;
+    updateEmployee(employee.id, {
+      ...draft,
+      fullName: `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim()
+    });
+    onClose();
+  };
+
+  const inputClassName = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900';
+
+  const renderTextField = (label: string, value: string | undefined, onChange: (value: string) => void, type = 'text') => (
+    <label className="block text-xs font-semibold text-slate-700">
+      {label}
+      <input type={type} value={value || ''} onChange={event => onChange(event.target.value)} className={`${inputClassName} mt-1 font-normal`} />
+    </label>
+  );
+
+  const renderNumberField = (label: string, value: number, onChange: (value: number) => void) => (
+    <label className="block text-xs font-semibold text-slate-700">
+      {label}
+      <input type="number" min="0" step="0.01" value={value} onChange={event => onChange(Number(event.target.value))} className={`${inputClassName} mt-1 font-normal font-mono`} />
+    </label>
+  );
+
+  if (isEditing && draft) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+        <form onSubmit={handleSaveProfile} className="w-full max-w-5xl max-h-[92vh] bg-white rounded-xl shadow-2xl border border-slate-200 flex flex-col">
+          <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Edit Employee Profile</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Update personal, employment, and compensation details.</p>
+            </div>
+            <button type="button" onClick={() => setIsEditing(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg" aria-label="Cancel profile editing">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-6 overflow-y-auto space-y-6 text-xs">
+            <section className="space-y-3">
+              <h3 className="font-bold text-slate-900">Personal and Contact</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {renderTextField('First name', draft.firstName, value => updateField('firstName', value))}
+                {renderTextField('Last name', draft.lastName, value => updateField('lastName', value))}
+                {renderTextField('Date of birth', draft.dateOfBirth, value => updateField('dateOfBirth', value), 'date')}
+                <label className="block text-xs font-semibold text-slate-700">Gender
+                  <select value={draft.gender} onChange={event => updateField('gender', event.target.value as Employee['gender'])} className={`${inputClassName} mt-1 font-normal`}>
+                    <option>Female</option><option>Male</option><option>Other</option>
+                  </select>
+                </label>
+                {renderTextField('Work email', draft.workEmail, value => updateField('workEmail', value), 'email')}
+                {renderTextField('Personal email', draft.personalEmail, value => updateField('personalEmail', value), 'email')}
+                {renderTextField('Phone', draft.phone, value => updateField('phone', value), 'tel')}
+                {renderTextField('Mobile number', draft.mobileNumber, value => updateField('mobileNumber', value), 'tel')}
+                {renderTextField('Current address', draft.currentAddress, value => updateField('currentAddress', value))}
+                {renderTextField('Permanent address', draft.permanentAddress, value => updateField('permanentAddress', value))}
+                {renderTextField('PAN', draft.pan, value => updateField('pan', value))}
+                {renderTextField('Aadhaar', draft.aadhaar, value => updateField('aadhaar', value))}
+                {renderTextField('UAN', draft.uan, value => updateField('uan', value))}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="font-bold text-slate-900">Employment</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {renderTextField('Designation', draft.designation, value => updateField('designation', value))}
+                <label className="block text-xs font-semibold text-slate-700">Department
+                  <select value={draft.departmentId} onChange={event => updateField('departmentId', event.target.value)} className={`${inputClassName} mt-1 font-normal`}>
+                    {departments.map(departmentOption => <option key={departmentOption.id} value={departmentOption.id}>{departmentOption.name}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs font-semibold text-slate-700">Manager
+                  <select value={draft.managerId || ''} onChange={event => updateField('managerId', event.target.value || undefined)} className={`${inputClassName} mt-1 font-normal`}>
+                    <option value="">No manager</option>
+                    {employees.filter(employeeOption => employeeOption.id !== draft.id).map(employeeOption => <option key={employeeOption.id} value={employeeOption.id}>{employeeOption.fullName}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs font-semibold text-slate-700">Status
+                  <select value={draft.status} onChange={event => updateField('status', event.target.value as Employee['status'])} className={`${inputClassName} mt-1 font-normal`}>
+                    {(['Active', 'Probation', 'Notice Period', 'Resigned', 'Terminated', 'Inactive', 'Deactivated'] as Employee['status'][]).map(status => <option key={status}>{status}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs font-semibold text-slate-700">Employment type
+                  <select value={draft.employmentType} onChange={event => updateField('employmentType', event.target.value as Employee['employmentType'])} className={`${inputClassName} mt-1 font-normal`}>
+                    {(['Full Time', 'Part Time', 'Intern', 'Contract', 'Freelancer'] as Employee['employmentType'][]).map(type => <option key={type}>{type}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs font-semibold text-slate-700">Company role
+                  <select value={draft.companyRole || ''} onChange={event => updateField('companyRole', (event.target.value || undefined) as Employee['companyRole'])} className={`${inputClassName} mt-1 font-normal`}>
+                    <option value="">Unassigned</option><option>Org. Admin</option><option>Manager</option><option>Executive</option>
+                  </select>
+                </label>
+                {renderTextField('Joining date', draft.joiningDate, value => updateField('joiningDate', value), 'date')}
+                {renderTextField('Work location', draft.workLocation, value => updateField('workLocation', value))}
+                {renderNumberField('Probation months', draft.probationPeriodMonths, value => updateField('probationPeriodMonths', value))}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="font-bold text-slate-900">Emergency Contact</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {renderTextField('Contact name', draft.emergencyContact.name, value => updateEmergencyContact('name', value))}
+                {renderTextField('Relationship', draft.emergencyContact.relationship, value => updateEmergencyContact('relationship', value))}
+                {renderTextField('Contact phone', draft.emergencyContact.phone, value => updateEmergencyContact('phone', value), 'tel')}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="font-bold text-slate-900">Salary Components (INR)</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {([
+                  ['basic', 'Basic'], ['hra', 'HRA'], ['allowances', 'Allowances'], ['incentives', 'Incentives'], ['bonus', 'Bonus'],
+                  ['pf', 'PF'], ['esi', 'ESI'], ['professionalTax', 'Professional tax'], ['tds', 'TDS'], ['otherDeductions', 'Other deductions']
+                ] as const).map(([field, label]) => renderNumberField(label, draft.salary[field], value => updateSalary(field, value)))}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="font-bold text-slate-900">Bank Details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {renderTextField('Account holder', draft.bankDetails.accountHolderName, value => updateBankDetails('accountHolderName', value))}
+                {renderTextField('Bank name', draft.bankDetails.bankName, value => updateBankDetails('bankName', value))}
+                {renderTextField('Account number', draft.bankDetails.accountNumber, value => updateBankDetails('accountNumber', value))}
+                {renderTextField('IFSC', draft.bankDetails.ifscCode, value => updateBankDetails('ifscCode', value))}
+                {renderTextField('UPI ID', draft.bankDetails.upiId, value => updateBankDetails('upiId', value))}
+                {renderTextField('Branch name', draft.bankDetails.branchName, value => updateBankDetails('branchName', value))}
+              </div>
+            </section>
+          </div>
+
+          <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+            <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg cursor-pointer">Cancel</button>
+            <button type="submit" className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#1D2B45] hover:bg-slate-800 rounded-lg cursor-pointer">
+              <Save className="w-3.5 h-3.5" /> Save Profile
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
@@ -98,12 +265,49 @@ export const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ empl
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg self-start sm:self-center transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-center">
+            {canManageProfiles && (
+              <button
+                onClick={() => {
+                  setDraft(employee);
+                  setIsEditing(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg cursor-pointer"
+              >
+                <Pencil className="w-3.5 h-3.5" /> Edit Profile
+              </button>
+            )}
+            {canManageProfiles && employee.status !== 'Deactivated' && currentUser?.employeeId !== employee.id && (
+              <button
+                onClick={onDeactivate}
+                className="px-3 py-2 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg cursor-pointer"
+              >
+                Deactivate Profile
+              </button>
+            )}
+            {canManageProfiles && employee.status === 'Deactivated' && currentUser?.employeeId !== employee.id && (
+              <button
+                onClick={onReactivate}
+                className="px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg cursor-pointer"
+              >
+                Reactivate Profile
+              </button>
+            )}
+            {canManageProfiles && currentUser?.employeeId !== employee.id && (
+              <button
+                onClick={onDelete}
+                className="px-3 py-2 text-xs font-semibold text-white bg-red-700 hover:bg-red-800 rounded-lg cursor-pointer"
+              >
+                Delete Profile
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -317,8 +521,8 @@ export const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ empl
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px]">
                     <tr>
                       <th className="py-2.5 px-3 font-semibold">Date</th>
-                      <th className="py-2.5 px-3 font-semibold">Check In</th>
-                      <th className="py-2.5 px-3 font-semibold">Check Out</th>
+                      <th className="py-2.5 px-3 font-semibold">Punch In</th>
+                      <th className="py-2.5 px-3 font-semibold">Punch Out</th>
                       <th className="py-2.5 px-3 font-semibold">Hours</th>
                       <th className="py-2.5 px-3 font-semibold">Overtime</th>
                       <th className="py-2.5 px-3 font-semibold">Status</th>

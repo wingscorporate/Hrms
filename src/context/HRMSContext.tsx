@@ -4,6 +4,7 @@ import {
   Employee,
   Department,
   AttendanceRecord,
+  AttendanceBreakSession,
   LeaveRequest,
   LeaveBalance,
   TaskItem,
@@ -41,7 +42,9 @@ import {
 
 interface HRMSContextType {
   currentUser: AuthUser | null;
-  login: (role: UserRole, customEmail?: string) => boolean;
+  todayDate: string;
+  currentBreakWindow: { id: string; label: string } | null;
+  authenticate: (username: string, password: string) => boolean;
   logout: () => void;
   switchRole: (role: UserRole) => void;
   
@@ -64,12 +67,16 @@ interface HRMSContextType {
   // Employee actions
   addEmployee: (emp: Omit<Employee, 'id' | 'employeeCode'>) => Employee;
   updateEmployee: (id: string, emp: Partial<Employee>) => void;
+  deactivateEmployee: (id: string) => void;
+  reactivateEmployee: (id: string) => void;
   deleteEmployee: (id: string) => void;
   
   // Attendance actions
   todayAttendance: AttendanceRecord | undefined;
   checkIn: () => void;
   checkOut: () => void;
+  startBreak: () => void;
+  endBreak: () => void;
   correctAttendance: (recordId: string, changes: Partial<AttendanceRecord>, reason: string) => void;
   
   // Leave actions
@@ -126,6 +133,42 @@ interface HRMSContextType {
 
 const HRMSContext = createContext<HRMSContextType | undefined>(undefined);
 
+interface ScheduledBreakWindow {
+  id: string;
+  label: string;
+  startMinute: number;
+  endMinute: number;
+}
+
+const BREAK_WINDOWS: ScheduledBreakWindow[] = [
+  { id: 'lunch', label: '1:30 PM - 2:00 PM', startMinute: 13 * 60 + 30, endMinute: 14 * 60 },
+  { id: 'afternoon', label: '4:30 PM - 4:45 PM', startMinute: 16 * 60 + 30, endMinute: 16 * 60 + 45 },
+  { id: 'evening', label: '6:30 PM - 6:45 PM', startMinute: 18 * 60 + 30, endMinute: 18 * 60 + 45 }
+];
+
+function getBreakWindowAt(date: Date): ScheduledBreakWindow | null {
+  const minuteOfDay = date.getHours() * 60 + date.getMinutes();
+  return BREAK_WINDOWS.find(window => minuteOfDay >= window.startMinute && minuteOfDay < window.endMinute) || null;
+}
+
+function getNextBreakBoundary(date: Date): number {
+  const now = date.getTime();
+  const futureBoundaries = BREAK_WINDOWS.flatMap(window => [window.startMinute, window.endMinute])
+    .map(minuteOfDay => {
+      const boundary = new Date(date);
+      boundary.setHours(Math.floor(minuteOfDay / 60), minuteOfDay % 60, 0, 0);
+      return boundary.getTime();
+    })
+    .filter(timestamp => timestamp > now);
+
+  if (futureBoundaries.length) return Math.min(...futureBoundaries);
+
+  const tomorrow = new Date(date);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(13, 30, 0, 0);
+  return tomorrow.getTime();
+}
+
 function getStorage<T>(key: string, fallback: T): T {
   try {
     const item = localStorage.getItem(`wings_hrms_${key}`);
@@ -144,23 +187,30 @@ function setStorage<T>(key: string, val: T): void {
   }
 }
 
+function getNextMidnightTimestamp(): number {
+  const midnight = new Date();
+  midnight.setHours(24, 0, 0, 0);
+  return midnight.getTime();
+}
+
+function getLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Current user state
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
     const cached = getStorage<AuthUser | null>('currentUser', null);
-    if (cached && (cached.email === 'official.wingsmarketing@gmail.com' || cached.email === 'retail@wings-marketing.in' || cached.email === 'sakshijais0309@gmail.com') && !cached.avatarUrl && cached.designation?.includes('Admin')) {
+    const sessionExpiresAt = getStorage<number | null>('sessionExpiresAt', null);
+    if (cached && sessionExpiresAt && sessionExpiresAt > Date.now()) {
       return cached;
     }
-    return {
-      id: 'usr-23',
-      email: 'official.wingsmarketing@gmail.com',
-      fullName: 'Harshita',
-      role: 'super_admin',
-      employeeId: 'emp-23',
-      avatarUrl: '',
-      designation: 'HR Org Admin',
-      departmentId: 'dept-1'
-    };
+    setStorage('currentUser', null);
+    setStorage('sessionExpiresAt', null);
+    return null;
   });
 
   const [employees, setEmployees] = useState<Employee[]>(() => {
@@ -180,7 +230,13 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setStorage('employees', initialEmployees);
       return initialEmployees;
     }
-    return cached;
+    const updatedEmployees = cached.map(employee => employee.id === 'emp-32'
+      ? { ...employee, lastName: 'Paul', fullName: 'Ardhendu Paul' }
+      : employee);
+    if (updatedEmployees.some((employee, index) => employee.fullName !== cached[index].fullName)) {
+      setStorage('employees', updatedEmployees);
+    }
+    return updatedEmployees;
   });
   const [departments, setDepartments] = useState<Department[]>(() => {
     const cached = getStorage<Department[]>('departments', initialDepartments);
@@ -193,7 +249,15 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setStorage('departments', initialDepartments);
       return initialDepartments;
     }
-    return cached;
+    const leadManagerByDepartment: Record<string, string> = { 'dept-1': 'emp-16', 'dept-2': 'emp-32' };
+    const updatedDepartments = cached.map(department => ({
+      ...department,
+      managerId: leadManagerByDepartment[department.id] || department.managerId
+    }));
+    if (updatedDepartments.some((department, index) => department.managerId !== cached[index].managerId)) {
+      setStorage('departments', updatedDepartments);
+    }
+    return updatedDepartments;
   });
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => {
     const cached = getStorage<AttendanceRecord[]>('attendance', initialAttendanceRecords);
@@ -236,13 +300,14 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => getStorage('auditLogs', initialAuditLogs));
   const [companySettings, setCompanySettings] = useState<CompanySettings>(() => {
     const cached = getStorage<CompanySettings>('companySettings', initialCompanySettings);
-    if (!cached || cached.officeStartTime !== '11:00' || cached.officeEndTime !== '20:00' || cached.logoUrl !== '') {
+    if (!cached || cached.officeStartTime !== '11:00' || cached.officeEndTime !== '20:00' || cached.gracePeriodMinutes !== 15 || cached.logoUrl !== '') {
       const updated: CompanySettings = {
         ...initialCompanySettings,
         ...(cached || {}),
         logoUrl: '',
         officeStartTime: '11:00',
         officeEndTime: '20:00',
+        gracePeriodMinutes: 15,
         workingHoursPerDay: 9
       };
       setStorage('companySettings', updated);
@@ -252,8 +317,37 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [activeNav, setActiveNav] = useState<string>('dashboard');
+  const [todayDate, setTodayDate] = useState(() => getLocalDateString(new Date()));
+  const [currentBreakWindow, setCurrentBreakWindow] = useState(() => getBreakWindowAt(new Date()));
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 0, 0);
+    const timeout = window.setTimeout(
+      () => setTodayDate(getLocalDateString(new Date())),
+      nextMidnight.getTime() - now.getTime() + 50
+    );
+
+    return () => window.clearTimeout(timeout);
+  }, [todayDate]);
+
+  useEffect(() => {
+    let timeout: number;
+    const updateBreakWindow = () => {
+      const now = new Date();
+      setCurrentBreakWindow(getBreakWindowAt(now));
+      timeout = window.setTimeout(
+        updateBreakWindow,
+        Math.max(50, getNextBreakBoundary(now) - now.getTime() + 50)
+      );
+    };
+
+    updateBreakWindow();
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   // Sync to localStorage
   useEffect(() => { setStorage('currentUser', currentUser); }, [currentUser]);
@@ -290,7 +384,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Login handler
-  const login = (role: UserRole, customEmail?: string): boolean => {
+  const loginAsRole = (role: UserRole, customEmail?: string): boolean => {
     let user: AuthUser;
 
     // Check if customEmail matches any employee
@@ -372,25 +466,58 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
+  const authenticate = (username: string, password: string): boolean => {
+    const normalizedUsername = username.trim().toLowerCase();
+    const matchedEmployee = employees.find(employee =>
+      employee.firstName.trim().toLowerCase() === normalizedUsername &&
+      password.trim().toLowerCase() === `${employee.firstName.trim().toLowerCase()}123` &&
+      employee.status !== 'Deactivated'
+    );
+
+    if (!matchedEmployee) return false;
+
+    let role: UserRole = 'employee';
+    if (matchedEmployee.companyRole === 'Org. Admin') role = 'super_admin';
+    else if (matchedEmployee.companyRole === 'Manager') role = 'manager';
+    else if (matchedEmployee.designation.toLowerCase().includes('hr')) role = 'hr';
+
+    setStorage('sessionExpiresAt', getNextMidnightTimestamp());
+    return loginAsRole(role, matchedEmployee.workEmail);
+  };
+
   const logout = () => {
     if (currentUser) {
       addAuditLog('User Logout', `Signed out from ${currentUser.fullName}`);
     }
+    setStorage('sessionExpiresAt', null);
     setCurrentUser(null);
   };
 
   const switchRole = (role: UserRole) => {
-    login(role);
+    if (currentUser?.role === 'employee') return;
+    loginAsRole(role);
   };
 
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const sessionExpiresAt = getStorage<number | null>('sessionExpiresAt', null);
+    const timeout = window.setTimeout(
+      logout,
+      Math.max(0, (sessionExpiresAt ?? 0) - Date.now())
+    );
+
+    return () => window.clearTimeout(timeout);
+  }, [currentUser]);
+
   // Find today's attendance for current employee
-  const todayStr = '2026-09-28';
   const todayAttendance = attendance.find(
-    a => a.employeeId === currentUser?.employeeId && a.date === todayStr
+    a => a.employeeId === currentUser?.employeeId && a.date === todayDate
   );
 
   const checkIn = () => {
-    if (!currentUser) return;
+    if (!currentUser || todayAttendance?.checkIn) return;
+    if (!window.confirm('Are you sure you want to punch in?')) return;
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
@@ -418,7 +545,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newRec: AttendanceRecord = {
         id: `att-${Date.now()}`,
         employeeId: currentUser.employeeId,
-        date: todayStr,
+        date: todayDate,
         checkIn: timeStr,
         workingHours: 0,
         breakMinutes: 0,
@@ -428,11 +555,17 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAttendance(prev => [newRec, ...prev]);
     }
 
-    addAuditLog('Check In', `Checked in at ${timeStr} with status ${status}`, currentUser.employeeId, currentUser.fullName);
+    addAuditLog('Punch In', `Punched in at ${timeStr} with status ${status}`, currentUser.employeeId, currentUser.fullName);
   };
 
   const checkOut = () => {
     if (!currentUser || !todayAttendance) return;
+    if (todayAttendance.breakSessions?.some(session => !session.endedAt)) {
+      window.alert('End your break before punching out.');
+      return;
+    }
+    if (!window.confirm('Are you sure you want to punch out?')) return;
+
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
@@ -442,7 +575,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let hoursWorked = 8.5;
     if (todayAttendance.checkIn) {
       const [cinH, cinM] = todayAttendance.checkIn.split(':').map(Number);
-      const minutesWorked = (now.getHours() * 60 + now.getMinutes()) - (cinH * 60 + cinM);
+      const minutesWorked = (now.getHours() * 60 + now.getMinutes()) - (cinH * 60 + cinM) - todayAttendance.breakMinutes;
       hoursWorked = Math.max(0.1, Number((minutesWorked / 60).toFixed(1)));
     }
 
@@ -460,10 +593,52 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       status: status
     } : a));
 
-    addAuditLog('Check Out', `Checked out at ${timeStr}. Total hours: ${hoursWorked}h`, currentUser.employeeId, currentUser.fullName);
+    addAuditLog('Punch Out', `Punched out at ${timeStr}. Total hours: ${hoursWorked}h`, currentUser.employeeId, currentUser.fullName);
+  };
+
+  const startBreak = () => {
+    if (!currentUser || !todayAttendance?.checkIn || todayAttendance.checkOut) return;
+
+    const now = new Date();
+    const breakWindow = getBreakWindowAt(now);
+    if (!breakWindow) return;
+
+    const sessions = todayAttendance.breakSessions || [];
+    if (sessions.some(session => session.windowId === breakWindow.id) || sessions.some(session => !session.endedAt)) return;
+
+    const newSession: AttendanceBreakSession = {
+      windowId: breakWindow.id,
+      startedAt: now.toISOString()
+    };
+    setAttendance(prev => prev.map(record => record.id === todayAttendance.id ? {
+      ...record,
+      breakSessions: [...(record.breakSessions || []), newSession]
+    } : record));
+    addAuditLog('Break Started', `Started break during ${breakWindow.label}`, currentUser.employeeId, currentUser.fullName);
+  };
+
+  const endBreak = () => {
+    if (!currentUser || !todayAttendance) return;
+    const activeSession = todayAttendance.breakSessions?.find(session => !session.endedAt);
+    if (!activeSession) return;
+
+    const now = new Date();
+    const durationMinutes = Math.max(1, Math.ceil((now.getTime() - new Date(activeSession.startedAt).getTime()) / 60000));
+    setAttendance(prev => prev.map(record => record.id === todayAttendance.id ? {
+      ...record,
+      breakMinutes: record.breakMinutes + durationMinutes,
+      breakSessions: (record.breakSessions || []).map(session =>
+        session.windowId === activeSession.windowId && session.startedAt === activeSession.startedAt
+          ? { ...session, endedAt: now.toISOString() }
+          : session
+      )
+    } : record));
+    addAuditLog('Break Ended', `Ended break after ${durationMinutes} minute(s)`, currentUser.employeeId, currentUser.fullName);
   };
 
   const correctAttendance = (recordId: string, changes: Partial<AttendanceRecord>, reason: string) => {
+    if (!currentUser || !['super_admin', 'hr', 'manager'].includes(currentUser.role)) return;
+
     const record = attendance.find(a => a.id === recordId);
     const targetEmp = employees.find(e => e.id === record?.employeeId);
 
@@ -510,15 +685,67 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateEmployee = (id: string, empData: Partial<Employee>) => {
+    if (!currentUser || !['super_admin', 'hr', 'manager'].includes(currentUser.role)) return;
+
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...empData } : e));
     const emp = employees.find(e => e.id === id);
     addAuditLog('Employee Updated', `Updated employee record details`, id, emp?.fullName);
   };
 
-  const deleteEmployee = (id: string) => {
+  const deactivateEmployee = (id: string) => {
+    if (!currentUser || !['super_admin', 'hr', 'manager'].includes(currentUser.role) || currentUser.employeeId === id) return;
     const emp = employees.find(e => e.id === id);
-    setEmployees(prev => prev.filter(e => e.id !== id));
-    addAuditLog('Employee Deleted', `Removed employee ${emp?.fullName} (${emp?.employeeCode})`, id, emp?.fullName);
+    if (!emp || emp.status === 'Deactivated') return;
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, status: 'Deactivated' } : e));
+    addAuditLog('Employee Deactivated', `Deactivated profile for ${emp.fullName} (${emp.employeeCode})`, id, emp.fullName);
+  };
+
+  const reactivateEmployee = (id: string) => {
+    if (!currentUser || !['super_admin', 'hr', 'manager'].includes(currentUser.role) || currentUser.employeeId === id) return;
+    const emp = employees.find(e => e.id === id);
+    if (!emp || emp.status !== 'Deactivated') return;
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, status: 'Active' } : e));
+    addAuditLog('Employee Reactivated', `Reactivated profile for ${emp.fullName} (${emp.employeeCode})`, id, emp.fullName);
+  };
+
+  const deleteEmployee = (id: string) => {
+    if (!currentUser || !['super_admin', 'hr', 'manager'].includes(currentUser.role) || currentUser.employeeId === id) return;
+    const emp = employees.find(e => e.id === id);
+    if (!emp) return;
+
+    setEmployees(prev => prev
+      .filter(employee => employee.id !== id)
+      .map(employee => employee.managerId === id
+        ? { ...employee, managerId: undefined, reportingTo: undefined }
+        : employee));
+    setDepartments(prev => prev.map(department => department.managerId === id
+      ? { ...department, managerId: undefined }
+      : department));
+    setAttendance(prev => prev.filter(record => record.employeeId !== id));
+    setLeaveRequests(prev => prev.filter(request => request.employeeId !== id));
+    setLeaveBalances(prev => {
+      const updated = { ...prev };
+      delete updated[id];
+      return updated;
+    });
+    setTasks(prev => prev
+      .filter(task => task.assignedToId !== id)
+      .map(task => ({
+        ...task,
+        createdById: task.createdById === id ? currentUser.employeeId : task.createdById,
+        comments: task.comments.filter(comment => comment.authorId !== id)
+      })));
+    setPerformanceReviews(prev => prev.filter(review => review.employeeId !== id && review.reviewerId !== id));
+    setPayrollRecords(prev => prev.filter(record => record.employeeId !== id));
+    setDocuments(prev => prev.filter(document => document.employeeId !== id));
+    setNotifications(prev => prev.filter(notification => notification.userId !== id));
+    setAnnouncements(prev => prev
+      .filter(announcement => announcement.targetEmployeeId !== id)
+      .map(announcement => announcement.createdById === id
+        ? { ...announcement, createdById: 'system', createdByName: 'Wings Corporation' }
+        : announcement));
+
+    addAuditLog('Employee Profile Deleted', `Permanently deleted profile for ${emp.fullName} (${emp.employeeCode})`, id, emp.fullName);
   };
 
   // Leave handling
@@ -548,8 +775,10 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const reviewLeave = (leaveId: string, status: 'Approved' | 'Rejected', comment: string) => {
+    if (!currentUser || !['super_admin', 'hr', 'manager'].includes(currentUser.role)) return;
+
     const req = leaveRequests.find(l => l.id === leaveId);
-    if (!req) return;
+    if (!req || req.status !== 'Pending') return;
     const applicant = employees.find(e => e.id === req.employeeId);
 
     setLeaveRequests(prev => prev.map(l => l.id === leaveId ? {
@@ -697,7 +926,15 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .map(emp => {
         const sal = emp.salary;
         const gross = sal.basic + sal.hra + sal.allowances + sal.incentives + sal.bonus;
-        const totalDeductions = sal.pf + sal.esi + sal.professionalTax + sal.tds + sal.otherDeductions;
+        const [startHour, startMinute] = companySettings.officeStartTime.split(':').map(Number);
+        const graceCutoff = startHour * 60 + startMinute + companySettings.gracePeriodMinutes;
+        const lateDates = new Set(attendance.filter(record => {
+          if (record.employeeId !== emp.id || !record.date.startsWith(`${monthYear}-`) || !record.checkIn) return false;
+          const [checkInHour, checkInMinute] = record.checkIn.split(':').map(Number);
+          return record.status === 'Late' || checkInHour * 60 + checkInMinute > graceCutoff;
+        }).map(record => record.date));
+        const lateDeduction = Math.round((Math.floor(lateDates.size / 3) * gross / 30) * 100) / 100;
+        const totalDeductions = sal.pf + sal.esi + sal.professionalTax + sal.tds + sal.otherDeductions + lateDeduction;
         const net = Math.max(0, gross - totalDeductions);
 
         return {
@@ -711,7 +948,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
           bonus: sal.bonus,
           overtime: 0,
           grossSalary: gross,
-          lateDeduction: 0,
+          lateDeduction,
           leaveWithoutPay: 0,
           pf: sal.pf,
           esi: sal.esi,
@@ -745,6 +982,8 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updatePayrollRecord = (payrollId: string, data: Partial<PayrollRecord>) => {
+    if (!currentUser || !['super_admin', 'hr', 'manager'].includes(currentUser.role)) return;
+
     setPayrollRecords(prev => prev.map(p => {
       if (p.id === payrollId) {
         const updated = { ...p, ...data };
@@ -876,33 +1115,107 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     addAuditLog('Demo Database Reset', 'Restored all Wings HRMS tables to pristine demonstration seed');
   };
 
+  const isEmployeeRole = currentUser?.role === 'employee';
+  const employeeId = currentUser?.employeeId;
+  const signedInEmployee = employees.find(employee => employee.id === employeeId);
+  const visibleEmployees = isEmployeeRole
+    ? employees.filter(employee => employee.id === employeeId).map(employee => ({
+        ...employee,
+        managerId: undefined,
+        reportingTo: undefined
+      }))
+    : employees;
+  const visibleDepartments = isEmployeeRole
+    ? departments
+        .filter(department => department.id === signedInEmployee?.departmentId)
+        .map(department => ({ ...department, managerId: undefined }))
+    : departments;
+  const visibleAttendance = isEmployeeRole
+    ? attendance.filter(record => record.employeeId === employeeId)
+    : attendance;
+  const visibleLeaveRequests = isEmployeeRole
+    ? leaveRequests
+        .filter(request => request.employeeId === employeeId)
+        .map(request => ({ ...request, reviewedBy: undefined, reviewerComment: undefined }))
+    : leaveRequests;
+  const visibleLeaveBalances: Record<string, LeaveBalance> = isEmployeeRole
+    ? employeeId && leaveBalances[employeeId]
+      ? { [employeeId]: leaveBalances[employeeId] }
+      : {}
+    : leaveBalances;
+  const visibleTasks = isEmployeeRole
+    ? tasks
+        .filter(task => task.assignedToId === employeeId)
+        .map(task => ({
+          ...task,
+          createdById: employeeId || '',
+          comments: task.comments?.filter(comment => comment.authorId === employeeId) || []
+        }))
+    : tasks;
+  const visiblePerformanceReviews = isEmployeeRole
+    ? performanceReviews
+        .filter(review => review.employeeId === employeeId)
+        .map(review => ({ ...review, reviewerId: '', managerComments: '' }))
+    : performanceReviews;
+  const visiblePayrollRecords = isEmployeeRole
+    ? payrollRecords
+        .filter(record => record.employeeId === employeeId)
+        .map(record => ({ ...record, generatedBy: undefined }))
+    : payrollRecords;
+  const visibleDocuments = isEmployeeRole
+    ? documents
+        .filter(document => document.employeeId === employeeId || document.isCompanyWide)
+        .map(document => document.isCompanyWide
+          ? { ...document, uploadedById: 'company', uploadedByName: 'Wings Corporation' }
+          : document)
+    : documents;
+  const visibleAnnouncements = isEmployeeRole
+    ? announcements
+        .filter(announcement =>
+          announcement.audience === 'Everyone' ||
+          (announcement.audience === 'Specific Department' && announcement.targetDepartmentId === signedInEmployee?.departmentId) ||
+          (announcement.audience === 'Individual Employees' && announcement.targetEmployeeId === employeeId)
+        )
+        .map(announcement => ({ ...announcement, createdById: '', createdByName: 'Wings Corporation' }))
+    : announcements;
+  const visibleNotifications = isEmployeeRole
+    ? notifications.filter(notification => notification.userId === employeeId)
+    : notifications;
+  const visibleAuditLogs = isEmployeeRole ? [] : auditLogs;
+
   return (
     <HRMSContext.Provider
       value={{
         currentUser,
-        login,
+        todayDate,
+        currentBreakWindow,
+        authenticate,
         logout,
         switchRole,
-        employees,
-        departments,
-        attendance,
-        leaveRequests,
-        leaveBalances,
-        tasks,
-        performanceReviews,
-        payrollRecords,
-        documents,
+        employees: visibleEmployees,
+        departments: visibleDepartments,
+        attendance: visibleAttendance,
+        leaveRequests: visibleLeaveRequests,
+        leaveBalances: visibleLeaveBalances,
+        tasks: visibleTasks,
+        performanceReviews: visiblePerformanceReviews,
+        payrollRecords: visiblePayrollRecords,
+        documents: visibleDocuments,
         holidays,
-        announcements,
-        notifications,
-        auditLogs,
+        announcements: visibleAnnouncements,
+        notifications: visibleNotifications,
+        auditLogs: visibleAuditLogs,
         companySettings,
         addEmployee,
         updateEmployee,
+        deactivateEmployee,
+        reactivateEmployee,
         deleteEmployee,
         todayAttendance,
         checkIn,
         checkOut,
+        startBreak,
+        endBreak,
         correctAttendance,
         applyLeave,
         reviewLeave,

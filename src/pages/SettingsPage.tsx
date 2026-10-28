@@ -31,9 +31,9 @@ export const SettingsPage: React.FC = () => {
 
   const canEdit = currentUser?.role === 'super_admin' || currentUser?.role === 'hr';
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateCompanySettings({
+    if (!await updateCompanySettings({
       companyName,
       tagline,
       address,
@@ -44,7 +44,7 @@ export const SettingsPage: React.FC = () => {
       gracePeriodMinutes: Number(gracePeriodMinutes),
       workingHoursPerDay: Number(workingHoursPerDay),
       financialYear
-    });
+    })) return;
 
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
@@ -66,8 +66,7 @@ export const SettingsPage: React.FC = () => {
             type="button"
             onClick={() => {
               if (confirm('Reset entire system to initial demonstration dataset? All edits will be restored.')) {
-                resetAllData();
-                alert('Database successfully restored to pristine demonstration state.');
+                void resetAllData();
               }
             }}
             className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"

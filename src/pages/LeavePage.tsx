@@ -47,12 +47,12 @@ export const LeavePage: React.FC = () => {
   const [reason, setReason] = useState('');
   const [attachmentName, setAttachmentName] = useState('');
 
-  const currentEmpId = currentUser?.employeeId || 'emp-5';
+  const currentEmpId = currentUser?.employeeId || '';
   const myBalance = leaveBalances[currentEmpId] || {
-    casual: { allocated: 12, used: 3 },
-    sick: { allocated: 10, used: 1 },
-    paid: { allocated: 18, used: 5 },
-    wfh: { allocated: 24, used: 8 },
+    casual: { allocated: 0, used: 0 },
+    sick: { allocated: 0, used: 0 },
+    paid: { allocated: 0, used: 0 },
+    wfh: { allocated: 0, used: 0 },
   };
 
   const isApprover = currentUser?.role === 'super_admin' || currentUser?.role === 'hr' || currentUser?.role === 'manager';
@@ -63,7 +63,7 @@ export const LeavePage: React.FC = () => {
     return req.status.toLowerCase() === filterStatus.toLowerCase();
   });
 
-  const handleApplySubmit = (e: React.FormEvent) => {
+  const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reason.trim()) {
       alert('Please provide a reason for the leave application.');
@@ -74,7 +74,7 @@ export const LeavePage: React.FC = () => {
     const end = new Date(endDate);
     const diffDays = isHalfDay ? 0.5 : Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1);
 
-    applyLeave({
+    if (!await applyLeave({
       employeeId: currentEmpId,
       leaveType,
       startDate,
@@ -84,16 +84,16 @@ export const LeavePage: React.FC = () => {
       totalDays: diffDays,
       reason,
       attachmentName: attachmentName || undefined
-    });
+    })) return;
 
     setIsApplyModalOpen(false);
     setReason('');
   };
 
-  const handleReviewConfirm = (e: React.FormEvent) => {
+  const handleReviewConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRequest) return;
-    reviewLeave(selectedRequest.id, reviewAction, reviewComment || `${reviewAction} by ${currentUser?.fullName}`);
+    if (!await reviewLeave(selectedRequest.id, reviewAction, reviewComment || `${reviewAction} by ${currentUser?.fullName}`)) return;
     setSelectedRequest(null);
     setReviewComment('');
   };

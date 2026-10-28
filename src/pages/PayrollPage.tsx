@@ -67,10 +67,10 @@ export const PayrollPage: React.FC = () => {
     generateMonthlyPayroll(selectedMonth);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRecord) return;
-    updatePayrollRecord(editingRecord.id, editingRecord);
+    if (!await updatePayrollRecord(editingRecord.id, editingRecord)) return;
     setEditingRecord(null);
   };
 

@@ -114,10 +114,25 @@ const AppContent: React.FC = () => {
   );
 };
 
+const DatabaseBoundary: React.FC = () => {
+  const { loading, saving, message, dismissMessage } = useHRMS();
+  return <>
+    <fieldset disabled={loading || saving} className="contents" aria-busy={loading || saving}>
+      <AppContent />
+    </fieldset>
+    {(loading || saving || message) && <div
+      role={message?.kind === 'error' ? 'alert' : 'status'} aria-live="polite"
+      className={`fixed bottom-20 md:bottom-6 right-4 z-[100] max-w-md px-4 py-3 rounded-xl border shadow-sm text-xs font-semibold ${message?.kind === 'error' ? 'bg-red-50 text-red-700 border-red-200' : message?.kind === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-white text-slate-700 border-slate-200'}`}>
+      {loading ? 'Loading saved records…' : saving ? 'Saving changes…' : message?.text}
+      {!loading && !saving && <button type="button" onClick={dismissMessage} className="ml-3" aria-label="Dismiss message">×</button>}
+    </div>}
+  </>;
+};
+
 export default function App() {
   return (
     <HRMSProvider>
-      <AppContent />
+      <DatabaseBoundary />
     </HRMSProvider>
   );
 }

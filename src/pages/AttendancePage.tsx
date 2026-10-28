@@ -124,7 +124,7 @@ export const AttendancePage: React.FC = () => {
     setCorrectionReason('');
   };
 
-  const handleSaveCorrection = (e: React.FormEvent) => {
+  const handleSaveCorrection = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!correctingRecord) return;
     if (!correctionReason.trim()) {
@@ -141,13 +141,13 @@ export const AttendancePage: React.FC = () => {
       hoursWorked = Math.max(0.1, Number((diffMin / 60).toFixed(1)));
     }
 
-    correctAttendance(correctingRecord.id, {
+    if (!await correctAttendance(correctingRecord.id, {
       checkIn: correctionCheckIn,
       checkOut: correctionCheckOut,
       status: correctionStatus,
       workingHours: hoursWorked,
       overtimeHours: Math.max(0, Number((hoursWorked - companySettings.workingHoursPerDay).toFixed(1)))
-    }, correctionReason);
+    }, correctionReason)) return;
 
     setCorrectingRecord(null);
   };

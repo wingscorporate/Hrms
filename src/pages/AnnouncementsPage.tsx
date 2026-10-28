@@ -29,11 +29,11 @@ export const AnnouncementsPage: React.FC = () => {
 
   const canPublish = currentUser?.role === 'super_admin' || currentUser?.role === 'hr' || currentUser?.role === 'manager';
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !description.trim()) return;
 
-    createAnnouncement({
+    if (!await createAnnouncement({
       title,
       description,
       audience,
@@ -41,7 +41,7 @@ export const AnnouncementsPage: React.FC = () => {
       publishDate,
       expiryDate,
       priority
-    });
+    })) return;
 
     setIsModalOpen(false);
     setTitle('');

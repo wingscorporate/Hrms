@@ -17,7 +17,7 @@ import { DocumentCategory, DocumentItem } from '../types';
 import { Avatar } from '../components/common/Avatar';
 
 export const DocumentsPage: React.FC = () => {
-  const { documents, employees, currentUser, uploadDocument, deleteDocument } = useHRMS();
+  const { documents, employees, currentUser, uploadDocument, deleteDocument, downloadStoredDocument } = useHRMS();
 
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -26,9 +26,10 @@ export const DocumentsPage: React.FC = () => {
 
   // Upload Form
   const [title, setTitle] = useState('');
-  const [employeeId, setEmployeeId] = useState(currentUser?.employeeId || 'emp-5');
+  const [employeeId, setEmployeeId] = useState(currentUser?.employeeId || '');
   const [category, setCategory] = useState<DocumentCategory>('Identity Documents');
   const [fileName, setFileName] = useState('');
+  const [file, setFile] = useState<File | null>(null);
 
   const canManageAll = currentUser?.role === 'super_admin' || currentUser?.role === 'hr';
 
@@ -55,22 +56,24 @@ export const DocumentsPage: React.FC = () => {
     return matchesCat && matchesSearch;
   });
 
-  const handleUploadSubmit = (e: React.FormEvent) => {
+  const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !fileName.trim()) return;
+    if (!title.trim() || !file) return;
 
-    uploadDocument({
+    if (!await uploadDocument({
       title,
       fileName,
-      fileSize: `${(Math.random() * 2 + 0.8).toFixed(1)} MB`,
+      fileSize: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
       category,
       employeeId,
-      fileType: 'application/pdf'
-    });
+      fileType: file.type,
+      isCompanyWide: category === 'Company Documents',
+    }, file)) return;
 
     setIsUploadModalOpen(false);
     setTitle('');
     setFileName('');
+    setFile(null);
   };
 
   return (
@@ -205,7 +208,7 @@ export const DocumentsPage: React.FC = () => {
                             <Eye className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => alert(`Downloading verified document: ${doc.fileName}`)}
+                            onClick={() => downloadStoredDocument(doc)}
                             className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded"
                             title="Download file"
                           >
@@ -301,11 +304,15 @@ export const DocumentsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-4 border-2 border-dashed border-slate-300 rounded-xl text-center bg-slate-50">
+              <label className="p-4 border-2 border-dashed border-slate-300 rounded-xl text-center bg-slate-50 block cursor-pointer">
+                <input type="file" required className="sr-only" accept=".pdf,.png,.jpg,.jpeg,.docx" onChange={event => {
+                  const selected = event.target.files?.[0] ?? null;
+                  setFile(selected); setFileName(selected?.name ?? '');
+                }} />
                 <Upload className="w-6 h-6 text-slate-400 mx-auto mb-1" />
                 <span className="text-xs font-semibold text-slate-700 block">Drag and drop file here, or browse</span>
                 <span className="text-[10px] text-slate-400">Supported: PDF, PNG, JPG, DOCX (Max 25MB)</span>
-              </div>
+              </label>
 
               <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
                 <button
@@ -361,7 +368,7 @@ export const DocumentsPage: React.FC = () => {
 
               <div className="pt-2 flex items-center justify-center gap-3">
                 <button
-                  onClick={() => alert(`Downloading verified document ${previewDoc.fileName}`)}
+                  onClick={() => downloadStoredDocument(previewDoc)}
                   className="flex items-center gap-1.5 px-4 py-2 bg-[#1D2B45] hover:bg-slate-800 text-white rounded-lg text-xs font-semibold"
                 >
                   <Download className="w-3.5 h-3.5" />

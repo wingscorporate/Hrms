@@ -23,30 +23,22 @@ import {
   PayrollStatus
 } from '../types';
 
-import {
-  initialEmployees,
-  initialDepartments,
-  initialAttendanceRecords,
-  initialLeaveBalances,
-  initialLeaveRequests,
-  initialTasks,
-  initialPerformanceReviews,
-  initialPayrollRecords,
-  initialDocuments,
-  initialHolidays,
-  initialAnnouncements,
-  initialNotifications,
-  initialAuditLogs,
-  initialCompanySettings
-} from '../lib/mockData';
+import { useDatabaseStore } from './useDatabaseStore';
+import { downloadDocument } from '../lib/hrmsDatabase';
+import { requireSupabase } from '../lib/supabase';
 
 interface HRMSContextType {
   currentUser: AuthUser | null;
   todayDate: string;
   currentBreakWindow: { id: string; label: string } | null;
-  authenticate: (username: string, password: string) => boolean;
+  authenticate: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   switchRole: (role: UserRole) => void;
+  loading: boolean;
+  saving: boolean;
+  message: { kind: 'error' | 'success'; text: string } | null;
+  dismissMessage: () => void;
+  downloadStoredDocument: (doc: DocumentItem) => Promise<void>;
   
   // Data
   employees: Employee[];
@@ -65,64 +57,64 @@ interface HRMSContextType {
   companySettings: CompanySettings;
   
   // Employee actions
-  addEmployee: (emp: Omit<Employee, 'id' | 'employeeCode'>) => Employee;
-  updateEmployee: (id: string, emp: Partial<Employee>) => void;
-  deactivateEmployee: (id: string) => void;
-  reactivateEmployee: (id: string) => void;
-  deleteEmployee: (id: string) => void;
+  addEmployee: (emp: Omit<Employee, 'id' | 'employeeCode'>) => Promise<Employee | null>;
+  updateEmployee: (id: string, emp: Partial<Employee>) => Promise<boolean>;
+  deactivateEmployee: (id: string) => Promise<boolean>;
+  reactivateEmployee: (id: string) => Promise<boolean>;
+  deleteEmployee: (id: string) => Promise<boolean>;
   
   // Attendance actions
   todayAttendance: AttendanceRecord | undefined;
-  checkIn: () => void;
-  checkOut: () => void;
-  startBreak: () => void;
-  endBreak: () => void;
-  correctAttendance: (recordId: string, changes: Partial<AttendanceRecord>, reason: string) => void;
+  checkIn: () => Promise<boolean>;
+  checkOut: () => Promise<boolean>;
+  startBreak: () => Promise<boolean>;
+  endBreak: () => Promise<boolean>;
+  correctAttendance: (recordId: string, changes: Partial<AttendanceRecord>, reason: string) => Promise<boolean>;
   
   // Leave actions
-  applyLeave: (request: Omit<LeaveRequest, 'id' | 'createdAt' | 'status'>) => void;
-  reviewLeave: (leaveId: string, status: 'Approved' | 'Rejected', comment: string) => void;
-  cancelLeave: (leaveId: string) => void;
+  applyLeave: (request: Omit<LeaveRequest, 'id' | 'createdAt' | 'status'>) => Promise<boolean>;
+  reviewLeave: (leaveId: string, status: 'Approved' | 'Rejected', comment: string) => Promise<boolean>;
+  cancelLeave: (leaveId: string) => Promise<boolean>;
   
   // Task actions
-  createTask: (task: Omit<TaskItem, 'id' | 'createdAt' | 'updatedAt' | 'comments'>) => void;
-  updateTaskStatus: (taskId: string, status: TaskStatus) => void;
-  addTaskComment: (taskId: string, text: string) => void;
-  deleteTask: (taskId: string) => void;
+  createTask: (task: Omit<TaskItem, 'id' | 'createdAt' | 'updatedAt' | 'comments'>) => Promise<boolean>;
+  updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<boolean>;
+  addTaskComment: (taskId: string, text: string) => Promise<boolean>;
+  deleteTask: (taskId: string) => Promise<boolean>;
   
   // Performance actions
-  submitPerformanceReview: (review: Omit<PerformanceReview, 'id' | 'createdAt' | 'updatedAt' | 'finalRating'>) => void;
+  submitPerformanceReview: (review: Omit<PerformanceReview, 'id' | 'createdAt' | 'updatedAt' | 'finalRating'>) => Promise<boolean>;
   
   // Payroll actions
-  generateMonthlyPayroll: (monthYear: string) => void;
-  updatePayrollStatus: (payrollId: string, status: PayrollStatus) => void;
-  updatePayrollRecord: (payrollId: string, data: Partial<PayrollRecord>) => void;
+  generateMonthlyPayroll: (monthYear: string) => Promise<boolean>;
+  updatePayrollStatus: (payrollId: string, status: PayrollStatus) => Promise<boolean>;
+  updatePayrollRecord: (payrollId: string, data: Partial<PayrollRecord>) => Promise<boolean>;
   
   // Documents actions
-  uploadDocument: (doc: Omit<DocumentItem, 'id' | 'uploadDate' | 'uploadedById' | 'uploadedByName'>) => void;
-  deleteDocument: (docId: string) => void;
+  uploadDocument: (doc: Omit<DocumentItem, 'id' | 'uploadDate' | 'uploadedById' | 'uploadedByName'>, file: File) => Promise<boolean>;
+  deleteDocument: (docId: string) => Promise<boolean>;
   
   // Department actions
-  createDepartment: (dept: Omit<Department, 'id' | 'createdAt'>) => void;
-  updateDepartment: (id: string, dept: Partial<Department>) => void;
+  createDepartment: (dept: Omit<Department, 'id' | 'createdAt'>) => Promise<boolean>;
+  updateDepartment: (id: string, dept: Partial<Department>) => Promise<boolean>;
   
   // Holiday actions
-  createHoliday: (hol: Omit<Holiday, 'id'>) => void;
-  deleteHoliday: (id: string) => void;
+  createHoliday: (hol: Omit<Holiday, 'id'>) => Promise<boolean>;
+  deleteHoliday: (id: string) => Promise<boolean>;
   
   // Announcement actions
-  createAnnouncement: (ann: Omit<Announcement, 'id' | 'createdAt' | 'createdById' | 'createdByName'>) => void;
-  deleteAnnouncement: (id: string) => void;
+  createAnnouncement: (ann: Omit<Announcement, 'id' | 'createdAt' | 'createdById' | 'createdByName'>) => Promise<boolean>;
+  deleteAnnouncement: (id: string) => Promise<boolean>;
   
   // Notification actions
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: () => void;
+  markNotificationRead: (id: string) => Promise<boolean>;
+  markAllNotificationsRead: () => Promise<boolean>;
   
   // Settings actions
-  updateCompanySettings: (settings: Partial<CompanySettings>) => void;
+  updateCompanySettings: (settings: Partial<CompanySettings>) => Promise<boolean>;
   
   // System
-  resetAllData: () => void;
+  resetAllData: () => Promise<boolean>;
   activeNav: string;
   setActiveNav: (nav: string) => void;
   searchQuery: string;
@@ -169,30 +161,6 @@ function getNextBreakBoundary(date: Date): number {
   return tomorrow.getTime();
 }
 
-function getStorage<T>(key: string, fallback: T): T {
-  try {
-    const item = localStorage.getItem(`wings_hrms_${key}`);
-    return item ? JSON.parse(item) : fallback;
-  } catch (e) {
-    console.error('Storage read error:', e);
-    return fallback;
-  }
-}
-
-function setStorage<T>(key: string, val: T): void {
-  try {
-    localStorage.setItem(`wings_hrms_${key}`, JSON.stringify(val));
-  } catch (e) {
-    console.error('Storage write error:', e);
-  }
-}
-
-function getNextMidnightTimestamp(): number {
-  const midnight = new Date();
-  midnight.setHours(24, 0, 0, 0);
-  return midnight.getTime();
-}
-
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -201,120 +169,22 @@ function getLocalDateString(date: Date): string {
 }
 
 export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Current user state
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
-    const cached = getStorage<AuthUser | null>('currentUser', null);
-    const sessionExpiresAt = getStorage<number | null>('sessionExpiresAt', null);
-    if (cached && sessionExpiresAt && sessionExpiresAt > Date.now()) {
-      return cached;
-    }
-    setStorage('currentUser', null);
-    setStorage('sessionExpiresAt', null);
-    return null;
-  });
-
-  const [employees, setEmployees] = useState<Employee[]>(() => {
-    const cached = getStorage<Employee[]>('employees', initialEmployees);
-    // Invalidate if cache contains obsolete departments (e.g. dept-3, dept-4, etc.) or obsolete salaries (basic !== 15000 for manager or basic !== 10000 for executive)
-    if (
-      !cached || 
-      cached.length !== initialEmployees.length || 
-      cached.some(e => 
-        e.avatarUrl !== '' || 
-        (e.departmentId !== 'dept-1' && e.departmentId !== 'dept-2') ||
-        (e.designation.includes('Manager') && e.salary.basic !== 15000) ||
-        (e.designation.includes('Executive') && e.salary.basic !== 10000) ||
-        (e.fullName === 'Sourav Roy' && e.designation !== 'HR Executive')
-      )
-    ) {
-      setStorage('employees', initialEmployees);
-      return initialEmployees;
-    }
-    const updatedEmployees = cached.map(employee => employee.id === 'emp-32'
-      ? { ...employee, lastName: 'Paul', fullName: 'Ardhendu Paul' }
-      : employee);
-    if (updatedEmployees.some((employee, index) => employee.fullName !== cached[index].fullName)) {
-      setStorage('employees', updatedEmployees);
-    }
-    return updatedEmployees;
-  });
-  const [departments, setDepartments] = useState<Department[]>(() => {
-    const cached = getStorage<Department[]>('departments', initialDepartments);
-    if (
-      !cached || 
-      cached.length !== 2 || 
-      !cached.some(d => d.id === 'dept-1' && d.name === 'HR') || 
-      !cached.some(d => d.id === 'dept-2' && d.name === 'Sales')
-    ) {
-      setStorage('departments', initialDepartments);
-      return initialDepartments;
-    }
-    const leadManagerByDepartment: Record<string, string> = { 'dept-1': 'emp-16', 'dept-2': 'emp-32' };
-    const updatedDepartments = cached.map(department => ({
-      ...department,
-      managerId: leadManagerByDepartment[department.id] || department.managerId
-    }));
-    if (updatedDepartments.some((department, index) => department.managerId !== cached[index].managerId)) {
-      setStorage('departments', updatedDepartments);
-    }
-    return updatedDepartments;
-  });
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => {
-    const cached = getStorage<AttendanceRecord[]>('attendance', initialAttendanceRecords);
-    if (!cached || cached.length < 30 || cached.some(a => a.checkIn === '09:20' || a.checkOut === '18:30')) {
-      setStorage('attendance', initialAttendanceRecords);
-      return initialAttendanceRecords;
-    }
-    return cached;
-  });
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => getStorage('leaveRequests', initialLeaveRequests));
-  const [leaveBalances, setLeaveBalances] = useState<Record<string, LeaveBalance>>(() => getStorage('leaveBalances', initialLeaveBalances));
-  const [tasks, setTasks] = useState<TaskItem[]>(() => {
-    const cached = getStorage<TaskItem[]>('tasks', initialTasks);
-    if (!cached || cached.some(t => t.title.includes('E-Commerce') || t.title.includes('Showreel'))) {
-      setStorage('tasks', initialTasks);
-      return initialTasks;
-    }
-    return cached;
-  });
-  const [performanceReviews, setPerformanceReviews] = useState<PerformanceReview[]>(() => {
-    const cached = getStorage<PerformanceReview[]>('performanceReviews', initialPerformanceReviews);
-    if (!cached || cached.some(r => r.managerComments.includes('digital store architecture'))) {
-      setStorage('performanceReviews', initialPerformanceReviews);
-      return initialPerformanceReviews;
-    }
-    return cached;
-  });
-  const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>(() => {
-    const cached = getStorage<PayrollRecord[]>('payrollRecords', initialPayrollRecords);
-    if (!cached || cached.length < 30 || cached.some(p => p.grossSalary !== 30000 && p.grossSalary !== 20000)) {
-      setStorage('payrollRecords', initialPayrollRecords);
-      return initialPayrollRecords;
-    }
-    return cached;
-  });
-  const [documents, setDocuments] = useState<DocumentItem[]>(() => getStorage('documents', initialDocuments));
-  const [holidays, setHolidays] = useState<Holiday[]>(() => getStorage('holidays', initialHolidays));
-  const [announcements, setAnnouncements] = useState<Announcement[]>(() => getStorage('announcements', initialAnnouncements));
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => getStorage('notifications', initialNotifications));
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => getStorage('auditLogs', initialAuditLogs));
-  const [companySettings, setCompanySettings] = useState<CompanySettings>(() => {
-    const cached = getStorage<CompanySettings>('companySettings', initialCompanySettings);
-    if (!cached || cached.officeStartTime !== '11:00' || cached.officeEndTime !== '20:00' || cached.gracePeriodMinutes !== 15 || cached.logoUrl !== '') {
-      const updated: CompanySettings = {
-        ...initialCompanySettings,
-        ...(cached || {}),
-        logoUrl: '',
-        officeStartTime: '11:00',
-        officeEndTime: '20:00',
-        gracePeriodMinutes: 15,
-        workingHoursPerDay: 9
-      };
-      setStorage('companySettings', updated);
-      return updated;
-    }
-    return cached;
-  });
+  const database = useDatabaseStore();
+  const { currentUser, authenticate, logout } = database;
+  const { employees, departments, attendance, leaveRequests, leaveBalances, tasks, performanceReviews, payrollRecords, documents, holidays, announcements, notifications, auditLogs, companySettings } = database.data;
+  const setEmployees = database.setter('employees');
+  const setDepartments = database.setter('departments');
+  const setAttendance = database.setter('attendance');
+  const setLeaveRequests = database.setter('leaveRequests');
+  const setLeaveBalances = database.setter('leaveBalances');
+  const setTasks = database.setter('tasks');
+  const setPerformanceReviews = database.setter('performanceReviews');
+  const setPayrollRecords = database.setter('payrollRecords');
+  const setDocuments = database.setter('documents');
+  const setHolidays = database.setter('holidays');
+  const setAnnouncements = database.setter('announcements');
+  const setNotifications = database.setter('notifications');
+  const setCompanySettings = database.setter('companySettings');
 
   const [activeNav, setActiveNav] = useState<string>('dashboard');
   const [todayDate, setTodayDate] = useState(() => getLocalDateString(new Date()));
@@ -349,166 +219,11 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.clearTimeout(timeout);
   }, []);
 
-  // Sync to localStorage
-  useEffect(() => { setStorage('currentUser', currentUser); }, [currentUser]);
-  useEffect(() => { setStorage('employees', employees); }, [employees]);
-  useEffect(() => { setStorage('departments', departments); }, [departments]);
-  useEffect(() => { setStorage('attendance', attendance); }, [attendance]);
-  useEffect(() => { setStorage('leaveRequests', leaveRequests); }, [leaveRequests]);
-  useEffect(() => { setStorage('leaveBalances', leaveBalances); }, [leaveBalances]);
-  useEffect(() => { setStorage('tasks', tasks); }, [tasks]);
-  useEffect(() => { setStorage('performanceReviews', performanceReviews); }, [performanceReviews]);
-  useEffect(() => { setStorage('payrollRecords', payrollRecords); }, [payrollRecords]);
-  useEffect(() => { setStorage('documents', documents); }, [documents]);
-  useEffect(() => { setStorage('holidays', holidays); }, [holidays]);
-  useEffect(() => { setStorage('announcements', announcements); }, [announcements]);
-  useEffect(() => { setStorage('notifications', notifications); }, [notifications]);
-  useEffect(() => { setStorage('auditLogs', auditLogs); }, [auditLogs]);
-  useEffect(() => { setStorage('companySettings', companySettings); }, [companySettings]);
-
-  // Audit log helper
-  const addAuditLog = (action: string, details: string, targetEmpId?: string, targetEmpName?: string) => {
-    const newLog: AuditLog = {
-      id: `aud-${Date.now()}`,
-      performedById: currentUser?.employeeId || 'sys',
-      performedByName: currentUser?.fullName || 'System',
-      performedByRole: currentUser?.role || 'super_admin',
-      action,
-      targetEmployeeId: targetEmpId,
-      targetEmployeeName: targetEmpName,
-      details,
-      ipAddress: '192.168.1.' + Math.floor(Math.random() * 80 + 10),
-      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19)
-    };
-    setAuditLogs(prev => [newLog, ...prev]);
+  // Auditing is generated by database triggers, with the authenticated actor.
+  const addAuditLog = (..._args: unknown[]) => {};
+  const switchRole = (_role: UserRole) => {
+    database.fail(new Error('Roles are assigned by your administrator. Sign in with the appropriate account.'));
   };
-
-  // Login handler
-  const loginAsRole = (role: UserRole, customEmail?: string): boolean => {
-    let user: AuthUser;
-
-    // Check if customEmail matches any employee
-    if (customEmail) {
-      const matched = employees.find(e => 
-        e.workEmail.toLowerCase() === customEmail.toLowerCase() || 
-        e.personalEmail.toLowerCase() === customEmail.toLowerCase() ||
-        (e.mobileNumber && customEmail.includes(e.mobileNumber))
-      );
-      if (matched) {
-        let mappedRole: UserRole = 'employee';
-        if (matched.companyRole === 'Org. Admin') mappedRole = 'super_admin';
-        else if (matched.companyRole === 'Manager') mappedRole = 'manager';
-        else if (matched.designation.toLowerCase().includes('hr')) mappedRole = 'hr';
-
-        user = {
-          id: `usr-${matched.id}`,
-          email: matched.workEmail,
-          fullName: matched.fullName,
-          role: mappedRole,
-          employeeId: matched.id,
-          avatarUrl: matched.avatarUrl,
-          designation: matched.designation,
-          departmentId: matched.departmentId
-        };
-        setCurrentUser(user);
-        addAuditLog('User Login', `Signed in as ${user.fullName} (${user.role})`);
-        return true;
-      }
-    }
-
-    if (role === 'super_admin') {
-      user = {
-        id: 'usr-23',
-        email: customEmail || 'official.wingsmarketing@gmail.com',
-        fullName: 'Harshita',
-        role: 'super_admin',
-        employeeId: 'emp-23',
-        avatarUrl: '',
-        designation: 'HR Org Admin',
-        departmentId: 'dept-1'
-      };
-    } else if (role === 'hr') {
-      user = {
-        id: 'usr-1',
-        email: customEmail || 'varsha@wings-marketing.in',
-        fullName: 'Varsha',
-        role: 'hr',
-        employeeId: 'emp-1',
-        avatarUrl: '',
-        designation: 'HR Manager',
-        departmentId: 'dept-1'
-      };
-    } else if (role === 'manager') {
-      user = {
-        id: 'usr-11',
-        email: customEmail || 'sakshijais0309@gmail.com',
-        fullName: 'Sakshi Jaiswal',
-        role: 'manager',
-        employeeId: 'emp-11',
-        avatarUrl: '',
-        designation: 'Sales Manager',
-        departmentId: 'dept-2'
-      };
-    } else {
-      user = {
-        id: 'usr-4',
-        email: customEmail || 'subhasish.bose@wings-marketing.in',
-        fullName: 'Subhasish Bose',
-        role: 'employee',
-        employeeId: 'emp-4',
-        avatarUrl: '',
-        designation: 'Sales Executive',
-        departmentId: 'dept-2'
-      };
-    }
-    setCurrentUser(user);
-    addAuditLog('User Login', `Signed in as ${user.fullName} (${user.role})`);
-    return true;
-  };
-
-  const authenticate = (username: string, password: string): boolean => {
-    const normalizedUsername = username.trim().toLowerCase();
-    const matchedEmployee = employees.find(employee =>
-      employee.firstName.trim().toLowerCase() === normalizedUsername &&
-      password.trim().toLowerCase() === `${employee.firstName.trim().toLowerCase()}123` &&
-      employee.status !== 'Deactivated'
-    );
-
-    if (!matchedEmployee) return false;
-
-    let role: UserRole = 'employee';
-    if (matchedEmployee.companyRole === 'Org. Admin') role = 'super_admin';
-    else if (matchedEmployee.companyRole === 'Manager') role = 'manager';
-    else if (matchedEmployee.designation.toLowerCase().includes('hr')) role = 'hr';
-
-    setStorage('sessionExpiresAt', getNextMidnightTimestamp());
-    return loginAsRole(role, matchedEmployee.workEmail);
-  };
-
-  const logout = () => {
-    if (currentUser) {
-      addAuditLog('User Logout', `Signed out from ${currentUser.fullName}`);
-    }
-    setStorage('sessionExpiresAt', null);
-    setCurrentUser(null);
-  };
-
-  const switchRole = (role: UserRole) => {
-    if (currentUser?.role === 'employee') return;
-    loginAsRole(role);
-  };
-
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const sessionExpiresAt = getStorage<number | null>('sessionExpiresAt', null);
-    const timeout = window.setTimeout(
-      logout,
-      Math.max(0, (sessionExpiresAt ?? 0) - Date.now())
-    );
-
-    return () => window.clearTimeout(timeout);
-  }, [currentUser]);
 
   // Find today's attendance for current employee
   const todayAttendance = attendance.find(
@@ -543,7 +258,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } : a));
     } else {
       const newRec: AttendanceRecord = {
-        id: `att-${Date.now()}`,
+        id: `att-${crypto.randomUUID()}`,
         employeeId: currentUser.employeeId,
         date: todayDate,
         checkIn: timeStr,
@@ -671,7 +386,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return !isNaN(num) && num > max ? num : max;
     }, 0);
     const nextCode = `WC-${String(maxNum + 1).padStart(3, '0')}`;
-    const newId = `emp-${Date.now()}`;
+    const newId = `emp-${crypto.randomUUID()}`;
 
     const newEmployee: Employee = {
       ...empData,
@@ -752,7 +467,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const applyLeave = (req: Omit<LeaveRequest, 'id' | 'createdAt' | 'status'>) => {
     const newLeave: LeaveRequest = {
       ...req,
-      id: `leave-${Date.now()}`,
+      id: `leave-${crypto.randomUUID()}`,
       status: 'Pending',
       createdAt: new Date().toISOString().slice(0, 10)
     };
@@ -761,17 +476,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const applicant = employees.find(e => e.id === req.employeeId);
     addAuditLog('Leave Applied', `Applied for ${req.totalDays} day(s) ${req.leaveType}`, req.employeeId, applicant?.fullName);
 
-    // Notify HR
-    const newNotif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      title: 'New Leave Request',
-      message: `${applicant?.fullName} applied for ${req.totalDays} day(s) ${req.leaveType} (${req.startDate} to ${req.endDate}).`,
-      type: 'leave',
-      isRead: false,
-      linkUrl: 'leave',
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
-    };
-    setNotifications(prev => [newNotif, ...prev]);
+
   };
 
   const reviewLeave = (leaveId: string, status: 'Approved' | 'Rejected', comment: string) => {
@@ -788,28 +493,6 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       reviewerComment: comment
     } : l));
 
-    // Update leave balance if approved
-    if (status === 'Approved') {
-      setLeaveBalances(prev => {
-        const empBalance = prev[req.employeeId] || { ...initialLeaveBalances.default };
-        let category: 'casual' | 'sick' | 'paid' | 'wfh' = 'casual';
-        if (req.leaveType === 'Sick Leave') category = 'sick';
-        else if (req.leaveType === 'Paid Leave') category = 'paid';
-        else if (req.leaveType === 'Work From Home') category = 'wfh';
-
-        return {
-          ...prev,
-          [req.employeeId]: {
-            ...empBalance,
-            [category]: {
-              ...empBalance[category],
-              used: empBalance[category].used + req.totalDays
-            }
-          }
-        };
-      });
-    }
-
     addAuditLog(
       `Leave ${status}`,
       `${status} leave for ${req.totalDays} day(s) (${req.leaveType}). Reviewer comment: ${comment}`,
@@ -817,29 +500,18 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       applicant?.fullName
     );
 
-    // Send notification to employee
-    const notif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      userId: req.employeeId,
-      title: `Leave ${status}`,
-      message: `Your ${req.leaveType} request for ${req.startDate} has been ${status.toLowerCase()} by ${currentUser?.fullName}.`,
-      type: 'leave',
-      isRead: false,
-      linkUrl: 'leave',
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
-    };
-    setNotifications(prev => [notif, ...prev]);
+
   };
 
   const cancelLeave = (leaveId: string) => {
-    setLeaveRequests(prev => prev.map(l => l.id === leaveId ? { ...l, status: 'Cancelled' } : l));
+    setLeaveRequests(prev => prev.map(l => l.id === leaveId && l.status === 'Pending' ? { ...l, status: 'Cancelled' } : l));
   };
 
   // Task handling
   const createTask = (taskData: Omit<TaskItem, 'id' | 'createdAt' | 'updatedAt' | 'comments'>) => {
     const newTask: TaskItem = {
       ...taskData,
-      id: `task-${Date.now()}`,
+      id: `task-${crypto.randomUUID()}`,
       comments: [],
       createdAt: new Date().toISOString().slice(0, 10),
       updatedAt: new Date().toISOString().slice(0, 10)
@@ -849,18 +521,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const assignee = employees.find(e => e.id === taskData.assignedToId);
     addAuditLog('Task Created', `Created task "${taskData.title}" assigned to ${assignee?.fullName}`, taskData.assignedToId, assignee?.fullName);
 
-    // Notify assignee
-    const notif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      userId: taskData.assignedToId,
-      title: 'New Task Assigned',
-      message: `You were assigned: "${taskData.title}". Deadline: ${taskData.deadline}.`,
-      type: 'task',
-      isRead: false,
-      linkUrl: 'tasks',
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
-    };
-    setNotifications(prev => [notif, ...prev]);
+
   };
 
   const updateTaskStatus = (taskId: string, status: TaskStatus) => {
@@ -874,7 +535,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addTaskComment = (taskId: string, text: string) => {
     if (!currentUser) return;
     const newComment = {
-      id: `tc-${Date.now()}`,
+      id: `tc-${crypto.randomUUID()}`,
       taskId,
       authorId: currentUser.employeeId,
       authorName: currentUser.fullName,
@@ -907,7 +568,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const newRev: PerformanceReview = {
       ...reviewData,
-      id: `rev-${Date.now()}`,
+      id: `rev-${crypto.randomUUID()}`,
       finalRating: avg,
       createdAt: new Date().toISOString().slice(0, 10),
       updatedAt: new Date().toISOString().slice(0, 10)
@@ -1006,7 +667,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const uploadDocument = (doc: Omit<DocumentItem, 'id' | 'uploadDate' | 'uploadedById' | 'uploadedByName'>) => {
     const newDoc: DocumentItem = {
       ...doc,
-      id: `doc-${Date.now()}`,
+      id: `doc-${crypto.randomUUID()}`,
       uploadDate: new Date().toISOString().slice(0, 10),
       uploadedById: currentUser?.employeeId || 'sys',
       uploadedByName: currentUser?.fullName || 'System User'
@@ -1026,7 +687,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const createDepartment = (dept: Omit<Department, 'id' | 'createdAt'>) => {
     const newDept: Department = {
       ...dept,
-      id: `dept-${Date.now()}`,
+      id: `dept-${crypto.randomUUID()}`,
       createdAt: new Date().toISOString().slice(0, 10)
     };
     setDepartments(prev => [...prev, newDept]);
@@ -1042,7 +703,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const createHoliday = (hol: Omit<Holiday, 'id'>) => {
     const newHol: Holiday = {
       ...hol,
-      id: `hol-${Date.now()}`
+      id: `hol-${crypto.randomUUID()}`
     };
     setHolidays(prev => [...prev, newHol]);
     addAuditLog('Holiday Created', `Added company holiday ${hol.name} on ${hol.date}`);
@@ -1056,7 +717,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const createAnnouncement = (ann: Omit<Announcement, 'id' | 'createdAt' | 'createdById' | 'createdByName'>) => {
     const newAnn: Announcement = {
       ...ann,
-      id: `ann-${Date.now()}`,
+      id: `ann-${crypto.randomUUID()}`,
       createdById: currentUser?.employeeId || 'sys',
       createdByName: currentUser?.fullName || 'Administrator',
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
@@ -1064,17 +725,7 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAnnouncements(prev => [newAnn, ...prev]);
     addAuditLog('Announcement Created', `Published announcement: "${ann.title}" for audience: ${ann.audience}`);
 
-    // Broadcast notification
-    const notif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      title: 'New Announcement',
-      message: ann.title,
-      type: 'announcement',
-      isRead: false,
-      linkUrl: 'announcements',
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
-    };
-    setNotifications(prev => [notif, ...prev]);
+
   };
 
   const deleteAnnouncement = (id: string) => {
@@ -1096,23 +747,31 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     addAuditLog('Company Settings Updated', 'Modified corporate HRMS operational rules and company profile');
   };
 
-  // Reset to initial demo
-  const resetAllData = () => {
-    setEmployees(initialEmployees);
-    setDepartments(initialDepartments);
-    setAttendance(initialAttendanceRecords);
-    setLeaveRequests(initialLeaveRequests);
-    setLeaveBalances(initialLeaveBalances);
-    setTasks(initialTasks);
-    setPerformanceReviews(initialPerformanceReviews);
-    setPayrollRecords(initialPayrollRecords);
-    setDocuments(initialDocuments);
-    setHolidays(initialHolidays);
-    setAnnouncements(initialAnnouncements);
-    setNotifications(initialNotifications);
-    setAuditLogs(initialAuditLogs);
-    setCompanySettings(initialCompanySettings);
-    addAuditLog('Demo Database Reset', 'Restored all Wings HRMS tables to pristine demonstration seed');
+  // Never reset a production database to mock records.
+  const resetAllData = async () => {
+    database.fail(new Error('Demo reset is disabled for the permanent database. No records were changed.'));
+    return false;
+  };
+
+  const uploadStoredDocument = async (doc: Omit<DocumentItem, 'id' | 'uploadDate' | 'uploadedById' | 'uploadedByName'>, file: File) => {
+    if (!database.companyId || !currentUser || !file) return false;
+    if (file.size > 25 * 1024 * 1024) { database.fail(new Error('Maximum document size is 25 MB.')); return false; }
+    const owner = doc.isCompanyWide ? 'company' : doc.employeeId || currentUser.employeeId;
+    const path = database.companyId + '/' + owner + '/' + crypto.randomUUID() + '/' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    try {
+      const client = requireSupabase();
+      const { error } = await client.storage.from('hrms-documents').upload(path, file, { upsert: false, contentType: file.type });
+      if (error) throw error;
+      const saved = await database.action(uploadDocument)({ ...doc, employeeId: doc.isCompanyWide ? undefined : owner, fileUrl: path, fileType: file.type, fileSize: (file.size / (1024 * 1024)).toFixed(2) + ' MB' });
+      if (!saved) {
+        const cleanup = await client.storage.from('hrms-documents').remove([path]);
+        if (cleanup.error) database.fail(new Error('Record save failed and upload cleanup failed. Ask an administrator to remove the orphan file.'));
+      }
+      return !!saved;
+    } catch (error) { database.fail(error); return false; }
+  };
+  const downloadStoredDocument = async (doc: DocumentItem) => {
+    try { await downloadDocument(doc); } catch (error) { database.fail(error); }
   };
 
   const isEmployeeRole = currentUser?.role === 'employee';
@@ -1187,6 +846,10 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <HRMSContext.Provider
       value={{
         currentUser,
+        loading: database.loading,
+        saving: database.saving,
+        message: database.message,
+        dismissMessage: database.dismissMessage,
         todayDate,
         currentBreakWindow,
         authenticate,
@@ -1206,39 +869,40 @@ export const HRMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
         notifications: visibleNotifications,
         auditLogs: visibleAuditLogs,
         companySettings,
-        addEmployee,
-        updateEmployee,
-        deactivateEmployee,
-        reactivateEmployee,
-        deleteEmployee,
+        addEmployee: database.action(addEmployee),
+        updateEmployee: database.action(updateEmployee),
+        deactivateEmployee: database.action(deactivateEmployee),
+        reactivateEmployee: database.action(reactivateEmployee),
+        deleteEmployee: database.action(deleteEmployee),
         todayAttendance,
-        checkIn,
-        checkOut,
-        startBreak,
-        endBreak,
-        correctAttendance,
-        applyLeave,
-        reviewLeave,
-        cancelLeave,
-        createTask,
-        updateTaskStatus,
-        addTaskComment,
-        deleteTask,
-        submitPerformanceReview,
-        generateMonthlyPayroll,
-        updatePayrollStatus,
-        updatePayrollRecord,
-        uploadDocument,
-        deleteDocument,
-        createDepartment,
-        updateDepartment,
-        createHoliday,
-        deleteHoliday,
-        createAnnouncement,
-        deleteAnnouncement,
-        markNotificationRead,
-        markAllNotificationsRead,
-        updateCompanySettings,
+        checkIn: database.action(checkIn),
+        checkOut: database.action(checkOut),
+        startBreak: database.action(startBreak),
+        endBreak: database.action(endBreak),
+        correctAttendance: database.action(correctAttendance),
+        applyLeave: database.action(applyLeave),
+        reviewLeave: database.action(reviewLeave),
+        cancelLeave: database.action(cancelLeave),
+        createTask: database.action(createTask),
+        updateTaskStatus: database.action(updateTaskStatus),
+        addTaskComment: database.action(addTaskComment),
+        deleteTask: database.action(deleteTask),
+        submitPerformanceReview: database.action(submitPerformanceReview),
+        generateMonthlyPayroll: database.action(generateMonthlyPayroll),
+        updatePayrollStatus: database.action(updatePayrollStatus),
+        updatePayrollRecord: database.action(updatePayrollRecord),
+        uploadDocument: uploadStoredDocument,
+        downloadStoredDocument,
+        deleteDocument: database.action(deleteDocument),
+        createDepartment: database.action(createDepartment),
+        updateDepartment: database.action(updateDepartment),
+        createHoliday: database.action(createHoliday),
+        deleteHoliday: database.action(deleteHoliday),
+        createAnnouncement: database.action(createAnnouncement),
+        deleteAnnouncement: database.action(deleteAnnouncement),
+        markNotificationRead: database.action(markNotificationRead),
+        markAllNotificationsRead: database.action(markAllNotificationsRead),
+        updateCompanySettings: database.action(updateCompanySettings),
         resetAllData,
         activeNav,
         setActiveNav,

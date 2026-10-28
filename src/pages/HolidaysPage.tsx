@@ -28,16 +28,16 @@ export const HolidaysPage: React.FC = () => {
     return filterType === 'all' || h.type === filterType;
   });
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    createHoliday({
+    if (!await createHoliday({
       name,
       date,
       type,
       description
-    });
+    })) return;
 
     setIsModalOpen(false);
     setName('');

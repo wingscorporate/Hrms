@@ -8,23 +8,20 @@ import wingsLogo from '../assets/images/wingslogo.png';
 import { useHRMS } from '../context/HRMSContext';
 
 export const Login: React.FC = () => {
-  const { authenticate } = useHRMS();
+  const { authenticate, loading } = useHRMS();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
-    setTimeout(() => {
-      if (!authenticate(username, password)) {
-        setError('Invalid user name or password.');
-      }
-      setIsLoading(false);
-    }, 400);
+    try {
+      if (!await authenticate(username, password)) setError('Sign-in failed. Check your account email and password, or contact your administrator.');
+    } finally { setIsLoading(false); }
   };
 
   return (
@@ -56,7 +53,7 @@ export const Login: React.FC = () => {
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   className="block w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#365CF5] focus:border-transparent outline-hidden transition-all text-slate-900"
-                  placeholder="Enter your user name"
+                  placeholder="Enter your account email"
                 />
               </div>
             </div>
@@ -89,7 +86,7 @@ export const Login: React.FC = () => {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || loading}
               className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-xs font-bold text-white bg-[#1D2B45] hover:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-[#1D2B45] transition-colors cursor-pointer"
             >
               {isLoading ? (

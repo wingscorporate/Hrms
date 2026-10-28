@@ -83,13 +83,13 @@ export const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ empl
     setDraft(current => current ? { ...current, emergencyContact: { ...current.emergencyContact, [field]: value } } : current);
   };
 
-  const handleSaveProfile = (event: React.FormEvent) => {
+  const handleSaveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!draft) return;
-    updateEmployee(employee.id, {
+    if (!await updateEmployee(employee.id, {
       ...draft,
       fullName: `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim()
-    });
+    })) return;
     onClose();
   };
 

@@ -28,7 +28,7 @@ export const PerformancePage: React.FC = () => {
   const [selectedReview, setSelectedReview] = useState<PerformanceReview | null>(null);
 
   // New review form
-  const [employeeId, setEmployeeId] = useState('emp-5');
+  const [employeeId, setEmployeeId] = useState(employees.find(employee => employee.id !== currentUser?.employeeId)?.id || '');
   const [reviewPeriod, setReviewPeriod] = useState('Q3 2026 (July - Sept)');
   const [qualityOfWork, setQualityOfWork] = useState(5);
   const [productivity, setProductivity] = useState(5);
@@ -43,16 +43,16 @@ export const PerformancePage: React.FC = () => {
 
   const calculatedRating = Number(((qualityOfWork + productivity + communication + teamwork + punctuality + responsibility) / 6).toFixed(1));
 
-  const handleReviewSubmit = (e: React.FormEvent) => {
+  const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!managerComments.trim()) {
       alert('Please add appraisal observations and manager feedback.');
       return;
     }
 
-    submitPerformanceReview({
+    if (!await submitPerformanceReview({
       employeeId,
-      reviewerId: currentUser?.employeeId || 'emp-1',
+      reviewerId: currentUser?.employeeId || '',
       reviewPeriod,
       qualityOfWork,
       productivity,
@@ -63,7 +63,7 @@ export const PerformancePage: React.FC = () => {
       managerComments,
       employeeComments: employeeComments || undefined,
       status: 'Completed'
-    });
+    })) return;
 
     setIsModalOpen(false);
     setManagerComments('');

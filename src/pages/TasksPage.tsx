@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   CheckSquare, 
   Plus, 
@@ -32,16 +32,19 @@ export const TasksPage: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
+  useEffect(() => {
+    setSelectedTask(current => current ? tasks.find(task => task.id === current.id) || null : null);
+  }, [tasks]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [commentInput, setCommentInput] = useState('');
 
   // Task Creation Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [assignedToId, setAssignedToId] = useState('emp-5');
+  const [assignedToId, setAssignedToId] = useState(employees[0]?.id || '');
   const [clientName, setClientName] = useState('Wings Corporation');
   const [projectName, setProjectName] = useState('Digital Transformation');
-  const [departmentId, setDepartmentId] = useState('dept-2');
+  const [departmentId, setDepartmentId] = useState(departments[0]?.id || '');
   const [priority, setPriority] = useState<TaskPriority>('Medium');
   const [startDate, setStartDate] = useState(todayDate);
   const [deadline, setDeadline] = useState('2026-10-10');
@@ -60,15 +63,15 @@ export const TasksPage: React.FC = () => {
     { status: 'Completed', label: 'Completed', color: 'border-emerald-400' },
   ];
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    createTask({
+    if (!await createTask({
       title,
       description,
       assignedToId,
-      createdById: currentUser?.employeeId || 'emp-1',
+      createdById: currentUser?.employeeId || '',
       clientName,
       projectName,
       departmentId,
@@ -76,21 +79,18 @@ export const TasksPage: React.FC = () => {
       startDate,
       deadline,
       status: 'To Do'
-    });
+    })) return;
 
     setIsCreateModalOpen(false);
     setTitle('');
     setDescription('');
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
+  const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTask || !commentInput.trim()) return;
-    addTaskComment(selectedTask.id, commentInput);
+    if (!await addTaskComment(selectedTask.id, commentInput)) return;
     setCommentInput('');
-    // refresh selected task comments locally
-    const updated = tasks.find(t => t.id === selectedTask.id);
-    if (updated) setSelectedTask({ ...updated });
   };
 
   const getPriorityBadge = (p: TaskPriority) => {
@@ -338,10 +338,7 @@ export const TasksPage: React.FC = () => {
                 <span className="font-semibold text-slate-700">Workflow Status:</span>
                 <select
                   value={selectedTask.status}
-                  onChange={e => {
-                    updateTaskStatus(selectedTask.id, e.target.value as TaskStatus);
-                    setSelectedTask({ ...selectedTask, status: e.target.value as TaskStatus });
-                  }}
+                  onChange={e => updateTaskStatus(selectedTask.id, e.target.value as TaskStatus)}
                   className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white font-semibold text-slate-900"
                 >
                   <option value="To Do">To Do</option>

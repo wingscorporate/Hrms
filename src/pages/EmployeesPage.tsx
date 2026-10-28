@@ -50,9 +50,9 @@ export const EmployeesPage: React.FC = () => {
     emergencyPhone: '+91 ',
     currentAddress: '',
     permanentAddress: '',
-    departmentId: 'dept-2',
+    departmentId: departments[0]?.id || '',
     designation: 'Sales Executive',
-    managerId: 'emp-11',
+    managerId: '',
     joiningDate: '2026-10-01',
     employmentType: 'Full Time' as EmploymentType,
     workLocation: 'Headquarters (Mumbai)',
@@ -117,30 +117,30 @@ export const EmployeesPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.firstName || !formData.lastName || !formData.workEmail) {
       alert('Please fill in required fields (First Name, Last Name, Work Email)');
       return;
     }
 
-    addEmployee({
+    if (!await addEmployee({
       firstName: formData.firstName,
       lastName: formData.lastName,
       fullName: `${formData.firstName} ${formData.lastName}`,
       avatarUrl: formData.avatarUrl,
       dateOfBirth: formData.dateOfBirth,
       gender: formData.gender,
-      personalEmail: formData.personalEmail || `${formData.firstName.toLowerCase()}@gmail.com`,
+      personalEmail: formData.personalEmail,
       workEmail: formData.workEmail,
       phone: formData.phone,
       emergencyContact: {
-        name: formData.emergencyName || 'Emergency Contact',
+        name: formData.emergencyName,
         relationship: formData.emergencyRelationship,
         phone: formData.emergencyPhone
       },
-      currentAddress: formData.currentAddress || 'Mumbai, Maharashtra',
-      permanentAddress: formData.permanentAddress || 'Mumbai, Maharashtra',
+      currentAddress: formData.currentAddress,
+      permanentAddress: formData.permanentAddress,
       departmentId: formData.departmentId,
       designation: formData.designation,
       managerId: formData.managerId,
@@ -164,34 +164,34 @@ export const EmployeesPage: React.FC = () => {
       bankDetails: {
         accountHolderName: formData.accountHolderName || `${formData.firstName} ${formData.lastName}`,
         bankName: formData.bankName,
-        accountNumber: formData.accountNumber || '50100' + Math.floor(Math.random() * 900000000 + 100000000),
+        accountNumber: formData.accountNumber,
         ifscCode: formData.ifscCode,
-        upiId: formData.upiId || `${formData.firstName.toLowerCase()}@hdfcbank`
+        upiId: formData.upiId
       },
-      pan: formData.pan || 'ABCDE1234F',
-      aadhaar: formData.aadhaar || '5829-1029-4820',
-      uan: formData.uan || '100482910294'
-    });
+      pan: formData.pan,
+      aadhaar: formData.aadhaar,
+      uan: formData.uan
+    })) return;
 
     setIsAddModalOpen(false);
     setStep(1);
   };
 
-  const handleDeactivate = () => {
+  const handleDeactivate = async () => {
     if (!selectedEmployee || !window.confirm(`Deactivate ${selectedEmployee.fullName}'s profile? Their records will be retained.`)) return;
-    deactivateEmployee(selectedEmployee.id);
+    if (!await deactivateEmployee(selectedEmployee.id)) return;
     setSelectedEmployee(null);
   };
 
-  const handleReactivate = () => {
+  const handleReactivate = async () => {
     if (!selectedEmployee || !window.confirm(`Reactivate ${selectedEmployee.fullName}'s profile?`)) return;
-    reactivateEmployee(selectedEmployee.id);
+    if (!await reactivateEmployee(selectedEmployee.id)) return;
     setSelectedEmployee(null);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedEmployee || !window.confirm(`Permanently delete ${selectedEmployee.fullName} and their related attendance, leave, task, payroll, review, and personal document data? This cannot be undone.`)) return;
-    deleteEmployee(selectedEmployee.id);
+    if (!await deleteEmployee(selectedEmployee.id)) return;
     setSelectedEmployee(null);
   };
 

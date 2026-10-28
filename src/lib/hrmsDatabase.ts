@@ -1,0 +1,105 @@
+import type { AuthUser, Employee, Department, AttendanceRecord, LeaveRequest, LeaveBalance, TaskItem, PerformanceReview, PayrollRecord, DocumentItem, Holiday, Announcement, NotificationItem, AuditLog, CompanySettings } from '../types';
+import { requireSupabase } from './supabase';
+
+export interface HRMSData {
+  employees: Employee[]; departments: Department[]; attendance: AttendanceRecord[];
+  leaveRequests: LeaveRequest[]; leaveBalances: Record<string, LeaveBalance>; tasks: TaskItem[];
+  performanceReviews: PerformanceReview[]; payrollRecords: PayrollRecord[]; documents: DocumentItem[];
+  holidays: Holiday[]; announcements: Announcement[]; notifications: NotificationItem[]; auditLogs: AuditLog[];
+  companySettings: CompanySettings;
+}
+
+// Only operational defaults, never employee or transaction seed records.
+export const defaultCompanySettings: CompanySettings = {
+  companyName: 'Wings Corporation', tagline: 'Manage your workforce. Simplify your workplace.', logoUrl: '',
+  address: '', email: '', phone: '', officeStartTime: '11:00', officeEndTime: '20:00',
+  gracePeriodMinutes: 15, workingHoursPerDay: 9, minFullDayHours: 8, minHalfDayHours: 4,
+  weeklyOffDays: ['Sunday'], financialYear: '2026-2027', currencySymbol: '₹',
+};
+export const emptyLeaveBalance: LeaveBalance = {
+  casual: { allocated: 0, used: 0 }, sick: { allocated: 0, used: 0 },
+  paid: { allocated: 0, used: 0 }, wfh: { allocated: 0, used: 0 },
+};
+export function emptyData(): HRMSData {
+  return { employees: [], departments: [], attendance: [], leaveRequests: [], leaveBalances: {}, tasks: [],
+    performanceReviews: [], payrollRecords: [], documents: [], holidays: [], announcements: [],
+    notifications: [], auditLogs: [], companySettings: { ...defaultCompanySettings } };
+}
+export const tables = {
+  departments: 'departments', employees: 'employees', attendance: 'attendance', leaveRequests: 'leave_records',
+  leaveBalances: 'leave_balances', tasks: 'tasks', performanceReviews: 'performance_reviews',
+  payrollRecords: 'payroll', documents: 'documents', holidays: 'holidays', announcements: 'announcements',
+  notifications: 'notifications', companySettings: 'company_settings', auditLogs: 'audit_logs',
+} as const;
+export type VersionMap = Record<string, number>;
+export interface Change { table: string; id: string; operation: 'insert' | 'update' | 'delete'; data?: unknown; revision: number | null }
+export interface DatabaseSession { user: AuthUser; companyId: string }
+
+export async function loadProfile(userId: string): Promise<DatabaseSession> {
+  const { data, error } = await requireSupabase().from('user_profiles').select('*').eq('id', userId).single();
+  if (error || !data?.is_active || !data.employee_id) throw new Error('Your account has no active HRMS profile. Ask your administrator to provision it.');
+  return { companyId: data.company_id, user: { id: data.id, email: data.email, fullName: data.full_name,
+    role: data.role, employeeId: data.employee_id, avatarUrl: data.avatar_url || '', departmentId: data.department_id } };
+}
+
+// PostgREST defaults to 1,000 rows. Read every page rather than silently truncating attendance/payroll.
+export async function loadData(companyId: string): Promise<{ data: HRMSData; versions: VersionMap }> {
+  const data = emptyData();
+  const versions: VersionMap = {};
+  await Promise.all(Object.entries(tables).map(async ([key, table]) => {
+    const records: { id: string; data: any; revision: number }[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const result = await requireSupabase().from(table).select('id,data,revision').eq('company_id', companyId)
+        .order('id').range(offset, offset + 499);
+      if (result.error) throw new Error(`${table}: ${result.error.message}`);
+      records.push(...result.data);
+      if (result.data.length < 500) break;
+    }
+    records.forEach(row => { versions[`${table}/${row.id}`] = row.revision; });
+    if (key === 'leaveBalances') data.leaveBalances = Object.fromEntries(records.map(row => [row.id, row.data]));
+    else if (key === 'companySettings') {
+      if (records.length !== 1) throw new Error('Company settings are missing. Run the company provisioning SQL.');
+      data.companySettings = { ...defaultCompanySettings, ...records[0].data };
+    } else (data as any)[key] = records.map(row => row.data);
+  }));
+  return { data, versions };
+}
+
+function asRows(key: string, value: any, companyId: string): Record<string, any> {
+  if (key === 'companySettings') return { [companyId]: value };
+  if (key === 'leaveBalances') return value;
+  return Object.fromEntries(value.map((row: { id: string }) => [row.id, row]));
+}
+
+export function changesBetween(before: HRMSData, after: HRMSData, companyId: string, versions: VersionMap): Change[] {
+  const changes: Change[] = [];
+  for (const [key, table] of Object.entries(tables)) {
+    if (key === 'auditLogs') continue; // Audit rows are generated by trusted database triggers.
+    const oldRows = asRows(key, before[key as keyof HRMSData], companyId);
+    const newRows = asRows(key, after[key as keyof HRMSData], companyId);
+    for (const [id, row] of Object.entries(newRows)) {
+      if (JSON.stringify(oldRows[id]) === JSON.stringify(row)) continue;
+      changes.push({ table, id, operation: oldRows[id] ? 'update' : 'insert', data: row,
+        revision: versions[`${table}/${id}`] ?? null });
+    }
+    for (const id of Object.keys(oldRows)) if (!newRows[id]) changes.push({ table, id, operation: 'delete', revision: versions[`${table}/${id}`] });
+  }
+  // Remove dependent records first. All relational constraints are also deferred to transaction end.
+  return changes.sort((a, b) => Number(b.operation === 'delete') - Number(a.operation === 'delete'));
+}
+
+export async function saveChanges(companyId: string, changes: Change[]) {
+  if (!changes.length) return;
+  const { error } = await requireSupabase().rpc('apply_hrms_changes', { target_company: companyId, changes });
+  if (error) throw new Error(error.message);
+}
+
+export async function downloadDocument(document: DocumentItem) {
+  if (!document.fileUrl) throw new Error('This document has no stored file. Upload the original file.');
+  const { data, error } = await requireSupabase().storage.from('hrms-documents').download(document.fileUrl);
+  if (error) throw new Error(error.message);
+  const url = URL.createObjectURL(data);
+  const link = window.document.createElement('a');
+  link.href = url; link.download = document.fileName; link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

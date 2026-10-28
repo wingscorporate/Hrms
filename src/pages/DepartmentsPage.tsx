@@ -49,26 +49,26 @@ export const DepartmentsPage: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !code.trim()) return;
 
     if (editingDept) {
-      updateDepartment(editingDept.id, {
+      if (!await updateDepartment(editingDept.id, {
         name,
         code: code.toUpperCase(),
         managerId: managerId || undefined,
         description,
         isActive
-      });
+      })) return;
     } else {
-      createDepartment({
+      if (!await createDepartment({
         name,
         code: code.toUpperCase(),
         managerId: managerId || undefined,
         description,
         isActive
-      });
+      })) return;
     }
 
     setIsModalOpen(false);

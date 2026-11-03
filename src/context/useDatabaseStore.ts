@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { emptyData, loadData, loadProfile, changesBetween, saveChanges, type HRMSData, type DatabaseSession, type VersionMap } from '../lib/hrmsDatabase';
+import { emptyData, loadData, loadProfile, changesBetween, saveChanges, tables, type HRMSData, type DatabaseSession, type VersionMap } from '../lib/hrmsDatabase';
 import { requireSupabase, supabase, supabaseConfigError } from '../lib/supabase';
 
 export function useDatabaseStore() {
@@ -13,6 +13,8 @@ export function useDatabaseStore() {
   const draft = useRef<HRMSData | null>(null);
   const locked = useRef(false);
   const generation = useRef(0);
+  const refreshSequence = useRef(0);
+  const pendingRefresh = useRef(false);
   const authUserId = useRef<string | null>(null);
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -22,6 +24,8 @@ export function useDatabaseStore() {
 
   async function establish(userId: string | null) {
     const epoch = ++generation.current;
+    ++refreshSequence.current; // Invalidate reads started under the prior session.
+    pendingRefresh.current = false;
     authUserId.current = userId;
     install(emptyData()); setSession(null); versions.current = {}; setLoading(true);
     if (!userId) { setLoading(false); return; }
@@ -56,19 +60,75 @@ export function useDatabaseStore() {
 
   async function refresh() {
     const active = sessionRef.current;
-    if (!active || locked.current) return;
+    if (!active) return;
+    if (locked.current) { pendingRefresh.current = true; return; }
     const epoch = generation.current;
+    const request = ++refreshSequence.current;
     try {
       const profile = await loadProfile(active.user.id);
-      if (JSON.stringify(profile) !== JSON.stringify(active)) { await establish(active.user.id); return; }
+      if (epoch !== generation.current || request !== refreshSequence.current || locked.current) return;
+      if (JSON.stringify(profile) !== JSON.stringify(active)) {
+        await establish(active.user.id);
+        return;
+      }
       const result = await loadData(active.companyId);
-      if (epoch === generation.current && !locked.current) { versions.current = result.versions; install(result.data); }
+      // A stale request must never replace a newer snapshot or an in-flight save.
+      if (epoch === generation.current && request === refreshSequence.current && !locked.current) {
+        versions.current = result.versions;
+        install(result.data);
+      }
     } catch (error) {
-      if (epoch === generation.current) { install(emptyData()); setSession(null); fail(error); }
+      if (epoch === generation.current && request === refreshSequence.current && !locked.current) {
+        // Keep the last successfully loaded snapshot visible during transient network errors.
+        fail(error);
+      }
     }
   }
 
+  // Subscribe only after the authenticated employee profile and company are loaded.
+  // Realtime events are invalidation signals: never merge event payloads containing
+  // personnel, payroll or bank details directly into frontend state.
   useEffect(() => {
+    if (!supabase || !session?.companyId) return;
+    const companyId = session.companyId;
+    const userId = session.user.id;
+    let active = true;
+    let refreshTimer: number | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        if (active) void refresh();
+      }, 250);
+    };
+    const channel = supabase.channel(`hrms-changes-${companyId}-${userId}`);
+    for (const table of Object.values(tables)) {
+      // Avoid streaming DELETE events: Postgres Changes cannot RLS-filter deleted
+      // rows. Existing 60-second polling and focus refresh cover deletions.
+      channel.on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table, filter: `company_id=eq.${companyId}`
+      }, scheduleRefresh);
+      channel.on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table, filter: `company_id=eq.${companyId}`
+      }, scheduleRefresh);
+    }
+    channel.on('postgres_changes', {
+      event: 'UPDATE', schema: 'public', table: 'user_profiles', filter: `id=eq.${userId}`
+    }, scheduleRefresh);
+    channel.subscribe(status => {
+      // Refresh after joining to close the gap between first load and subscribing.
+      if (status === 'SUBSCRIBED') scheduleRefresh();
+    });
+    return () => {
+      active = false;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      void supabase.removeChannel(channel);
+    };
+  }, [session?.companyId, session?.user.id]);
+
+  useEffect(() => {
+    // Polling is retained as a fallback for offline/reconnected clients, missed
+    // notifications and deletes, which aren't safe to subscribe to directly.
     const timer = window.setInterval(() => void refresh(), 60000);
     const onFocus = () => void refresh();
     window.addEventListener('focus', onFocus);
@@ -85,7 +145,7 @@ export function useDatabaseStore() {
   function action<A extends unknown[], R>(fn: (...args: A) => R) {
     return async (...args: A): Promise<R extends void ? boolean : R | null> => {
       if (!sessionRef.current || locked.current) { fail(new Error('Wait for the current operation to finish, then try again.')); return null as any; }
-      locked.current = true; setSaving(true); setMessage(null);
+      locked.current = true; ++refreshSequence.current; setSaving(true); setMessage(null);
       const epoch = generation.current;
       try {
         draft.current = structuredClone(state.current);
@@ -119,7 +179,10 @@ export function useDatabaseStore() {
       } catch (error) {
         if (epoch === generation.current) fail(error);
         return null as any;
-      } finally { draft.current = null; locked.current = false; setSaving(false); }
+      } finally {
+        draft.current = null; locked.current = false; setSaving(false);
+        if (pendingRefresh.current) { pendingRefresh.current = false; void refresh(); }
+      }
     };
   }
 
